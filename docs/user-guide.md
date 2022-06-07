@@ -35,10 +35,100 @@ Bug fixes:
 ## Feature Documentation
 
 ### Projecting %List datatypes to/from arrays
-TODO
+To project a %List datatype to/from a JSON array, use the %pkg.isc.json.dataType.list datatype instead of %List.
+
+Example:
+```
+Class isc.sample.json.list Extends (%RegisteredObject, %pkg.isc.json.adaptor)
+{
+
+Property listProperty As %pkg.isc.json.dataType.list;
+
+ClassMethod Demo()
+{
+	set inst = ..%New()
+	
+	do inst.%JSONExport()
+	// Output: {"listProperty":[]}
+	write !
+	set inst.listProperty = $ListBuild(1,2,3,"a","b","c")
+	
+	do inst.%JSONExport()
+	// Output: {"listProperty":[1,2,3,"a","b","c"]}
+	write !
+	
+	do inst.%JSONImport({"listProperty":[7,8,9,"x","y","z"]})
+	zwrite inst.listProperty
+	// Output: $lb(7,8,9,"x","y","z")
+}
+
+}
+```
 
 ### Including row IDs in JSON projection of persistent classes
-TODO
+To include row IDs in a JSON projection of a persistent class, override the `%JSONINCLUDEID` class parameter and set it to 1. The name of the ID property defaults to `"_id"` but can be customized by overriding the `%JSONIDFIELD` class parameter and providing a different value.
+
+In an XData mapping block, projection of the ID is controlled equivalently through the IncludeID and IDField attributes of the top-level <Mapping> element.
+
+Example:
+```
+Class isc.sample.json.persistent Extends (%Persistent, %pkg.isc.json.adaptor)
+{
+
+Parameter %JSONINCLUDEID = 1;
+
+Property name As %String;
+
+XData AltMapping [ XMLNamespace = "http://www.intersystems.com/_pkg/isc/json/jsonmapping" ]
+{
+<Mapping xmlns="http://www.intersystems.com/_pkg/isc/json/jsonmapping" IncludeID="true" IDField="rowID">
+<Property Name="name" />
+</Mapping>
+}
+
+ClassMethod Demo()
+{
+	do ..%KillExtent()
+	
+	set inst = ..%New()
+	set inst.name = "Klingman,Paul I." //##class(%PopulateUtils).Name()
+	do inst.%Save()
+	
+	do inst.%JSONExport()
+	// Outputs: {"_id":1,"name":"Klingman,Paul I."}
+	
+	write !
+	do inst.%JSONExport("AltMapping")
+	// Outputs: {"rowID":1,"name":"Klingman,Paul I."}
+	
+	// BUT this will not set inst to be ID 1 - it creates a clone
+	set inst = ..%New()
+	do inst.%JSONImport({"_id":1,"name":"Klingman,Paul I."})
+	do inst.%Save()
+	write !,inst.%Id()
+	// Outputs: 2
+}
+
+Storage Default
+{
+<Data name="persistentDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>name</Value>
+</Value>
+</Data>
+<DataLocation>^isc.sample.json.persistentD</DataLocation>
+<DefaultData>persistentDefaultData</DefaultData>
+<IdLocation>^isc.sample.json.persistentD</IdLocation>
+<IndexLocation>^isc.sample.json.persistentI</IndexLocation>
+<StreamLocation>^isc.sample.json.persistentS</StreamLocation>
+<Type>%Storage.Persistent</Type>
+}
+
+}
+```
 
 ### Layering/extending mappings within a given class
 TODO
