@@ -128,11 +128,11 @@ Method TestPointPaths()
 		},
 		"$.points[(@.%Size()-1)].id": {
 			"$['points'][5]['id']": "i6"
+		},
+		"$.points[?(@.id=\"i4\")].x": {
+			"$['points'][3]['x']": -6
 		}
 	}
-	
-	// This is for v2016.1.x/2016.2.x compatibility
-	Do tTestCases.%Set("$.points[?(@.id=""i4"")].x",{"$['points'][3]['x']": -6})
 	
 	Do ..UtilEvaluateTestCases(tTargetObject,tTestCases)
 }
@@ -204,25 +204,22 @@ Method TestMenuPaths()
 			"$['menu']['items'][0]": {
 				"id": "Open"
 			}
-		}
-	}
-	Set tLabelResults = {
-		"$['menu']['items'][0]['id']": "Open",
-		"$['menu']['items'][7]['id']": "Quality",
-		"$['menu']['items'][8]['id']": "Pause",
-		"$['menu']['items'][9]['id']": "Mute",
-		"$['menu']['items'][13]['id']": "Copy",
-		"$['menu']['items'][20]['id']": "Help"
-	}
-	Set tSvgResults = {
-		"$['menu']['items'][15]['id']": "CopySVG",
-		"$['menu']['items'][16]['id']": "ViewSVG"
+		},
+		"$.menu.items[?(@ && (@.id'=\"\") && (@.label=\"\"))].id": {
+			"$['menu']['items'][0]['id']": "Open",
+			"$['menu']['items'][7]['id']": "Quality",
+			"$['menu']['items'][8]['id']": "Pause",
+			"$['menu']['items'][9]['id']": "Mute",
+			"$['menu']['items'][13]['id']": "Copy",
+			"$['menu']['items'][20]['id']": "Help"
+		},
+		"$.menu.items[?(@ && (@.label'=\"\") && (@.label [ \"SVG\"))].id": {
+			"$['menu']['items'][15]['id']": "CopySVG",
+			"$['menu']['items'][16]['id']": "ViewSVG"
+		},
+		"$.menu.items[?(@=\"\")]":{}
 	}
 	
-	// This is for v2016.1.x/2016.2.x compatibility
-	Do tTestCases.%Set("$.menu.items[?(@ && (@.id'="""") && (@.label=""""))].id",tLabelResults)
-	Do tTestCases.%Set("$.menu.items[?(@ && (@.label'="""") && (@.label [ ""SVG""))].id",tSvgResults)
-	Do tTestCases.%Set("$.menu.items[?(@="""")]",{})
 	Do ..UtilEvaluateTestCases(tTargetObject,tTestCases)
 }
 
@@ -298,11 +295,12 @@ Method TestTextFilterExpressions()
 	Set tTestCases = {
 		"$.text[?($Length(@) > 5)]": {
 			"$['text'][1]": "world2.0"
+		},
+		"$.text[?($Extract(@) = \"h\")]": {
+			"$['text'][0]": "hello"
 		}
 	}
 	
-	// This is for v2016.1.x/2016.2.x compatibility
-	Do tTestCases.%Set("$.text[?($Extract(@) = ""h"")]",{"$['text'][0]": "hello"})
 	Do ..UtilEvaluateTestCases(tTargetObject,tTestCases)
 }
 
@@ -364,31 +362,23 @@ Method TestSpecialCharacters()
 		]
 	}
 	
-	// This is for v2016.1.x/2016.2.x compatibility
-	Set tTestCases = {}
-	Set tExpr1Results = {
-		"$['a'][1]": {
-			"a": 6,
-			"@": 3,
-			"$": 4
+	Set tTestCases = {
+		"$.a[?(@.%Get(\"\\@\")=3)]": {
+			"$['a'][1]": {
+				"a": 6,
+				"@": 3,
+				"$": 4
+			}
+		},
+		"$.a[?(@.\"$\"=5)]": {
+			"$['a'][2]": {
+				"a": 7,
+				"@": 4,
+				"$": 5
+			}
 		}
 	}
-	Do tTestCases.%Set("$.a[?(@.%Get(""\@"")=3)]",tExpr1Results)
-	Set tExpr1Results = {
-		"$['a'][1]": {
-			"a": 6,
-			"@": 3,
-			"$": 4
-		}
-	}
-	Set tExpr2Results = {
-		"$['a'][2]": {
-			"a": 7,
-			"@": 4,
-			"$": 5
-		}
-	}
-	Do tTestCases.%Set("$.a[?(@.""$""=5)]",tExpr2Results)
+	
 	Do ..UtilEvaluateTestCases(tTargetObject,tTestCases)
 }
 
@@ -402,7 +392,6 @@ Method UtilEvaluateTestCases(pTargetObject As %SystemBase, pExpectedResults As %
 		If $$$ISOK(tStatus) {
 			If '$$$AssertEquals(tResults.%ToJSON(),tExpectedResults.%ToJSON()) {
 				Do $$$AssertTrue(0,"Expected result: "_tExpectedResults.%ToJSON())
-				//TODO: Instead, detailed analysis of differences.
 			}
 		} Else {
 			If ($System.Status.GetErrorCodes(tStatus) = $$$NotImplemented) {

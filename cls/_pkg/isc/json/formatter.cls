@@ -134,7 +134,7 @@ Method FormatInternal(input, ByRef export As %String, toDevice As %Boolean) [ In
 			Set currentIteratorIsObject=currentIterator.%IsA("%Iterator.Object")
 			If currentIterator.%GetNext(.key,.current) {
 				// There is another value in this object or array.
-				Set currentType=$$$JSONGetTypeOf(currentContainer,key)
+				Set currentType=currentContainer.%GetTypeOf(key)
 				// Output , and indentation
 				Set export=export_sep
 				If indent Set export=export_lineTerminator_currentIndent

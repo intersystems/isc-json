@@ -1,19 +1,19 @@
 Class UnitTest.isc.json.dataTypes Extends (%pkg.isc.json.adaptor, %UnitTest.TestCase)
 {
 
-Property Integer As %pkg.isc.json.dataType.integer [ InitialExpression = 1 ];
+Property Integer As %Integer [ InitialExpression = 1 ];
 
-Property Boolean As %pkg.isc.json.dataType.boolean [ InitialExpression = 0 ];
+Property Boolean As %Boolean [ InitialExpression = 0 ];
 
-Property String As %pkg.isc.json.dataType.string [ InitialExpression = "hello world" ];
+Property String As %String [ InitialExpression = "hello world" ];
 
-Property StringWithLists As %pkg.isc.json.dataType.string(DISPLAYLIST = ",a,b,c", JSONLISTPARAMETER = "DISPLAYLIST", VALUELIST = ",1,2,3") [ InitialExpression = 1 ];
+Property StringWithLists As %String(DISPLAYLIST = ",a,b,c", JSONLISTPARAMETER = "DISPLAYLIST", VALUELIST = ",1,2,3") [ InitialExpression = 1 ];
 
-Property Date As %pkg.isc.json.dataType.date [ InitialExpression = {+$h} ];
+Property Date As %Date [ InitialExpression = {+$h} ];
 
-Property Time As %pkg.isc.json.dataType.time [ InitialExpression = {+$p($h,",",2)} ];
+Property Time As %Time [ InitialExpression = {+$p($h,",",2)} ];
 
-Property TimeStamp As %pkg.isc.json.dataType.timeStamp [ InitialExpression = {$zdt($h,3)} ];
+Property TimeStamp As %TimeStamp [ InitialExpression = {$zdt($h,3)} ];
 
 Property ArrayList As %pkg.isc.json.dataType.list [ InitialExpression = {$ListBuild(1,,2,3)} ];
 

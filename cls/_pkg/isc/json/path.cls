@@ -1,7 +1,7 @@
-Include %pkg.isc.json.cos
+Include %pkg.isc.json.map
 
-/// A Caché ObjectScript implementation of JSONPath
-/// Expressions syntax is Caché ObjectScript rather than JavaScript.
+/// An ObjectScript implementation of JSONPath
+/// Expressions syntax is ObjectScript rather than JavaScript.
 /// Derived from:
 /// JSONPath 0.8.5 - XPath for JSON
 /// 
@@ -35,7 +35,7 @@ ClassMethod %Evaluate(pObj As %Library.DynamicAbstractObject, pExpr As %String, 
 		}
 		Do tInst.walk(tNormExpr, pObj, $ListBuild("$"))
 	} Catch e {
-		Set outerSC = $$$ERROR($$$GeneralError,"Error evaluating JSON path expression '"_pExpr_"'")
+		Set outerSC = $$$ERROR($$$JSONPathExpressionError,pExpr)
 		Set innerSC = e.AsStatus()
 		Set pStatus = $$$EMBEDSC(outerSC,innerSC)
 	}
@@ -194,7 +194,7 @@ Method slice(pCurrentExpression As %String, pTrailingExpression As %List, pValue
 /// JSONPath (http://goessner.net/articles/JsonPath/) is defined as: <br />
 /// ?() applies a filter (script) expression. <br />
 /// () script expression, using the underlying script engine. <br />
-/// In this case, the "underlying script engine" is Caché ObjectScript, so these are Caché ObjectScript expressions.
+/// In this case, the "underlying script engine" is ObjectScript, so these are ObjectScript expressions.
 Method eval(pExpression As %String, pValue, pPath As %List) [ Private ]
 {
 	If (pValue = "") {
@@ -206,7 +206,7 @@ Method eval(pExpression As %String, pValue, pPath As %List) [ Private ]
 		Set tExecString = "(tExprResult,pV) Set tExprResult = ("_tExpr_")"
 		Xecute (tExecString,.tExprResult,pValue)
 	} Catch e {
-		Set tStatus = $System.Status.EmbedStatus($$$ERROR($$$GeneralError,"Error evaluating expression: "_tExecString),e.AsStatus())
+		Set tStatus = $System.Status.EmbedStatus($$$ERROR($$$JSONPathEvalError,tExecString),e.AsStatus())
 		$$$ThrowStatus(tStatus)
 	}
 	Quit tExprResult

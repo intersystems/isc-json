@@ -1,6 +1,6 @@
 Include %callout
 
-/// Encapsulates the CacheXSLT String Buffer XDEV device. <br />
+/// Encapsulates the XSLT String Buffer XDEV device. <br />
 /// Note that only one <class>%pkg.isc.json.util.buffer</class> instance may be used at a time per job.
 Class %pkg.isc.json.util.buffer Extends %RegisteredObject
 {

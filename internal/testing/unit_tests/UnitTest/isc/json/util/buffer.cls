@@ -91,23 +91,6 @@ Method TestBeginCaptureOutputBadTranslateTable()
 	Do $$$AssertTrue($System.Status.Equals(tSC,$$$ERRORCODE($$$CacheError)))
 }
 
-Method TestEndCaptureOutputException()
-{
-	// TODO: Fix for IRIS
-	/*
-	Set tFile = ##class(%Library.File).TempFilename()
-	Open tFile:"WNS"
-	Use tFile
-	Set tStringBuffer = ##class(%pkg.isc.json.util.buffer).%New()
-	Set tSC1 = tStringBuffer.BeginCaptureOutput()
-	Close tFile:"D"
-	Set tSC2 = tStringBuffer.EndCaptureOutput()
-	Do $$$AssertStatusOK(tSC1)
-	Do $$$AssertStatusNotOK(tSC2)
-	Do $$$AssertTrue($System.Status.Equals(tSC2,$$$ERRORCODE($$$CacheError)))
-	*/
-}
-
 Method TestOnClose()
 {
 	Set tSC = $$$OK
