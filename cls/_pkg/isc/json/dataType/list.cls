@@ -21,7 +21,7 @@ ClassMethod LogicalToJSON(val As %List) As %String
 	Quit array.%ToJSON()
 }
 
-/// Converts the SOAP encoded input list value into a Cache $list value.
+/// Converts the SOAP encoded input list value into an ObjectScript $list value.
 ClassMethod JSONToLogical(val As %Library.DynamicArray) As %List
 {
 	If '$IsObject(val) && ('val.%IsA("%Library.DynamicArray")) {

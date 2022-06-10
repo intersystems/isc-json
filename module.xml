@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Export generator="IRIS" version="26">
-  <Document name="isc.json.ZPM">
+<Document name="isc.json.ZPM">
     <Module>
       <Name>isc.json</Name>
       <Version>1.0.0+snapshot</Version>
@@ -9,7 +9,6 @@
       </Dependencies>
       <Resources><Resource Name="pkg.isc.json.lifecycle.CLS" Preload="true" />
         <Resource Name="%pkg.isc.json.PKG"></Resource>
-        <Resource Name="%pkg.isc.json.cos.INC"></Resource>
         <Resource Name="%pkg.isc.json.map.INC"></Resource>
         <Resource Name="/internal/testing/unit_tests/">
           <!-- Sneaky way to avoid running tests multiple times. -->
@@ -35,5 +34,4 @@
         </ProcessorDefault>
       </Defaults>
     </Module>
-  </Document>
-</Export>
+  </Document></Export>
