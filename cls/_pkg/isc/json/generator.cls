@@ -4,7 +4,7 @@ IncludeGenerator (%occInclude, %pkg.isc.json.map)
 
 /// Generator methods for %pkg.isc.json.adaptor.<br><br>
 /// 
-/// This class is used internally by InterSystems IRIS. You should not make direct
+/// This class is used internally to %pkg.isc.json.adaptor. You should not make direct
 /// use of it within your applications. There is no guarantee made about either
 /// the behavior or future operation of this class.
 Class %pkg.isc.json.generator [ Abstract, System = 2 ]
@@ -320,7 +320,7 @@ ClassMethod GetMemberInfo(class As %String, property As %String, ByRef includePr
 }
 
 /// Returns true if a type is JSON-enabled (based on compiled class / class definition metadata)
-ClassMethod IsTypeJSONEnabled(pType As %Dictionary.CacheClassname, ByRef visited) As %Boolean
+ClassMethod IsTypeJSONEnabled(pType As %Dictionary.Classname, ByRef visited) As %Boolean
 {
 	Set type = $$$NormalizeClassname(pType)
 	If $$$comMemberDefined(type,$$$cCLASSparameter,"%JSONENABLED") {
@@ -538,33 +538,22 @@ ClassMethod getDataFromMappingArray(ByRef mappingArray, ByRef fieldList, ByRef f
 		Set include = $ListGet(fieldData,3)
 		
 		For type = "in","out" {
+			//if fieldArray(jsonFieldName) exists, then we already have $lb data for the property
+			//with this jsonFieldName. So, to avoid duplicates, we're going to kill the entry in
+			//fieldList matching what we found in fieldArray(jsonFieldName).
+			If $Data(fieldArray(jsonFieldName,type),listIndex)#2 {
+				If ($Get(fieldList(listIndex)) = fieldData) {
+					//if unmodified, leave the property in the original place.
+					Continue
+				}
+				Kill fieldList(listIndex)
+				Kill fieldArray(jsonFieldName,type)
+			}
 			If (include = "inout") {
-				//if fieldArray(jsonFieldName) exists, then we already have $lb data for the property
-				//with this jsonFieldName. So, to avoid duplicates, we're going to kill the entry in
-				//fieldList matching what we found in fieldArray(jsonFieldName).
-				If $Data(fieldArray(jsonFieldName,type),listIndex) {
-					If (fieldList(listIndex) = fieldData) {
-						//if unmodified, leave the property in the original place.
-						Continue
-					}
-					Kill fieldList(listIndex)
-				}
-				If (type = "out") {
-					Set fieldList($increment(fieldList)) = fieldData
-					Set fieldArray(jsonFieldName,"in") = fieldList
-					Set fieldArray(jsonFieldName,"out") = fieldList
-				}
+				Set fieldList($increment(fieldList)) = fieldData
+				Set fieldArray(jsonFieldName,"in") = fieldList
+				Set fieldArray(jsonFieldName,"out") = fieldList
 			} ElseIf (include [ type) {
-				//if fieldArray(jsonFieldName) exists, then we already have $lb data for the property
-				//with this jsonFieldName. So, to avoid duplicates, we're going to kill the entry in
-				//fieldList matching what we found in fieldArray(jsonFieldName).
-				If $Data(fieldArray(jsonFieldName,type),listIndex) {
-					If (fieldList(listIndex) = fieldData) {
-						//if unmodified, leave the property in the original place.
-						Continue
-					}
-					Kill fieldList(listIndex)
-				}
 				//Add this property's data to fieldList, and store the index at which we can find it
 				//in fieldArray. This WILL leave gaps in field list, if there were duplicate jsonFieldNames.
 				Set fieldList($increment(fieldList)) = fieldData
@@ -635,6 +624,16 @@ ClassMethod GenerateMappingFromClass(class As %String, name As %String, obj As %
 		
 		// Get details of the property's type
 		Do ..GetMemberInfo(class,propertyName,.includeProperty,.type,.membercat,.objJSONEnabled)
+
+		// Get JSON field name. If not specified, then it defaults to the property name.
+		Set jsonfieldname=property.FieldName
+		If jsonfieldname="" {
+			If (jsonfieldnameascamelcase) {
+				Set jsonfieldname=..GetPascalCaseAsCamelCase(propertyName)
+			} Else {
+				Set jsonfieldname=propertyName
+			}
+		} 
 		
 		If includeProperty {
 			// Default for %JSONINCLUDE is "inout"
@@ -674,16 +673,6 @@ ClassMethod GenerateMappingFromClass(class As %String, name As %String, obj As %
 			If (required = "") {
 				Set required=$$$comMemberKeyGet(class,$$$cCLASSproperty,propertyName,$$$cPROPrequired)
 			}
-
-			// Get JSON field name. If not specified, then it defaults to the property name.
-			Set jsonfieldname=property.FieldName
-			If jsonfieldname="" {
-				If (jsonfieldnameascamelcase) {
-					Set jsonfieldname=..GetPascalCaseAsCamelCase(propertyName)
-				} Else {
-					Set jsonfieldname=propertyName
-				}
-			} 
 
 			// Get %JSONNULL property parameter.  Default is %JSONNULL class parameter.
 			Set jsonnull=property.Null
@@ -733,7 +722,11 @@ ClassMethod GenerateMappingFromClass(class As %String, name As %String, obj As %
 
 			// Set the node
 			Set mapping(name,$increment(mapping(name)))=
-			   $lb(propertyName,$$$QN(propertyName),jsoninclude,jsonfieldname,jsonnull,jsonignorenull,jsonreference,required,literaltype,membercat,type,jsonmapping)
+			   $lb(propertyName,$$$QN(propertyName),jsoninclude,jsonfieldname,jsonnull,jsonignorenull,jsonreference,required,literaltype,membercat,type,jsonmapping)	
+		} Else {
+			// Stub for JSONINCLUDE=none
+			Set mapping(name,$increment(mapping(name)))=
+			   $lb(propertyName,$$$QN(propertyName),jsoninclude,jsonfieldname)
 		}
 	}
 	
@@ -915,7 +908,7 @@ ClassMethod GenerateImportInternal(class As %String, indent As %String, mappingN
 		If $$$jsoninclude(propertyMap)'["in" Continue
 		
 		// Code to test if field is present
-		$$$GENERATE(indent_"  Set field="""_fieldname_""" Set jsontype=$$$JSONGetTypeOf(%JSONObject,field)")
+		$$$GENERATE(indent_"  Set field="""_fieldname_""" Set jsontype=%JSONObject.%GetTypeOf(field)")
 		$$$GENERATE(indent_"  If jsontype'=""unassigned"" {")
 		$$$GENERATE(indent_"    If jsontype=""null"" {")
 		// null value does not satisfy field required.
@@ -965,7 +958,7 @@ ClassMethod GenImportList(class As %String, propertyMap As %List, indent As %Str
 	$$$GENERATE(indent_"  Do .."_$$$jsonpropertyQN(propertyMap)_".Clear()")
 	$$$GENERATE(indent_"  For index=0:1:data.%Size()-1 {")
 	// Get the field value
-	$$$GENERATE(indent_"    Set jsontype=$$$JSONGetTypeOf(data,index)")
+	$$$GENERATE(indent_"    Set jsontype=data.%GetTypeOf(index)")
 	$$$GENERATE(indent_"    If jsontype=""null"" {")
 	$$$GENERATE(indent_"      Do .."_$$$jsonpropertyQN(propertyMap)_".Insert("""")")
 	$$$GENERATE(indent_"    } Else {")
@@ -984,7 +977,7 @@ ClassMethod GenImportArray(class As %String, propertyMap As %List, indent As %St
 	$$$GENERATE(indent_"  Do .."_$$$jsonpropertyQN(propertyMap)_".Clear()")
 	$$$GENERATE(indent_"  Set iterator=data.%GetIterator()")
 	$$$GENERATE(indent_"  While iterator.%GetNext(.index,.value) {")
-	$$$GENERATE(indent_"    Set jsontype=$$$JSONGetTypeOf(data,index)")
+	$$$GENERATE(indent_"    Set jsontype=data.%GetTypeOf(index)")
 	$$$GENERATE(indent_"    If jsontype=""null"" {")
 	$$$GENERATE(indent_"      Do .."_$$$jsonpropertyQN(propertyMap)_".SetAt("""",index)")
 	$$$GENERATE(indent_"    } Else {")
