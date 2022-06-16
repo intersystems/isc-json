@@ -1,4 +1,4 @@
-Class %pkg.isc.json.lifecycle Extends %ZPM.PackageManager.Developer.Lifecycle.Module
+Class pkg.isc.json.lifecycle Extends %ZPM.PackageManager.Developer.Lifecycle.Module
 {
 ClassMethod RunOnLoad() [ CodeMode = objectgenerator ]
 {
