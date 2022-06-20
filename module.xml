@@ -2,7 +2,7 @@
 <Document name="isc.json.ZPM">
     <Module>
       <Name>isc.json</Name>
-      <Version>2.0.0+snapshot</Version>
+      <Version>2.0.0</Version>
       <Packaging>module</Packaging>
       <Dependencies>
       </Dependencies>
