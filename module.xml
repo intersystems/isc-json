@@ -1,9 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<Export generator="IRIS" version="26">
+<?xml version="1.0" encoding="UTF-8"?><Export generator="IRIS" version="26">
 <Document name="isc.json.ZPM">
     <Module>
       <Name>isc.json</Name>
-      <Version>1.0.0+snapshot</Version>
+      <Version>2.0.0+snapshot</Version>
       <Packaging>module</Packaging>
       <Dependencies>
       </Dependencies>
