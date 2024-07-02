@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - APPS-13390: Updated to use approriate error macros instead of `$$$GeneralError`
 - APPS-13385: Remove orphaned code in include file `%pkg.isc.json.map`
+- #7: Make the library compatible with %IPM v0.9+
 
 ### Fixed
 - APPS-13384: Mapping cannot override a property from `<Call>` to remove it entirely
