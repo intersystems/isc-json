@@ -25,7 +25,7 @@ Property Mapping As %String(XMLPROJECTION = "attribute");
 Property Reference As %String(XMLPROJECTION = "attribute") [ InitialExpression = "OBJECT" ];
 
 /// See %JSONINCLUDEID class parameter in %pkg.isc.json.adaptor
-Property IncludeID As %Boolean(XMLPROJECTION = "attribute") [ InitialExpression = 1 ];
+Property IncludeID As %Boolean(XMLPROJECTION = "attribute") [ InitialExpression = 0 ];
 
 /// See %JSONIDFIELD class parameter in %pkg.isc.json.adaptor
 Property IDField As %String(XMLPROJECTION = "attribute") [ InitialExpression = "_id" ];

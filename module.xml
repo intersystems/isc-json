@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?><Export generator="IRIS" version="26">
-<Document name="isc.json.ZPM">
+  <Document name="isc.json.ZPM">
     <Module>
       <Name>isc.json</Name>
-      <Version>2.0.1</Version>
+      <Version>3.5.0</Version>
+      <Author>
+        <Organization>InterSystems Corporation</Organization>
+        <Person>AppServices</Person>
+      </Author>
       <Packaging>module</Packaging>
-      <Dependencies>
-      </Dependencies>
-      <Resources><Resource Name="pkg.isc.json.lifecycle.CLS" Preload="true" />
-        <Resource Name="%pkg.isc.json.PKG"></Resource>
-        <Resource Name="%pkg.isc.json.map.INC"></Resource>
-        <Resource Name="/internal/testing/unit_tests/">
-          <!-- Sneaky way to avoid running tests multiple times. -->
-          <Attribute Name="Phase">test</Attribute>
-          <Attribute Name="Package">UnitTest.isc.json</Attribute>
-        </Resource>
+      <Resources>
+        <Resource Name="pkg.isc.json.lifecycle.CLS" Preload="true" />
+        <Resource Name="%pkg.isc.json.PKG"/>
+        <Resource Name="%pkg.isc.json.map.INC"/>
       </Resources>
+      <Mappings>
+        <Mapping Name="%pkg.isc.json.PKG" Source="{$namespaceRoutineDB}"/>
+      </Mappings>
       <LifecycleClass>pkg.isc.json.lifecycle</LifecycleClass>
       <Defaults>
         <ProcessorDefault Class="Default.Class">
@@ -33,4 +34,5 @@
         </ProcessorDefault>
       </Defaults>
     </Module>
-  </Document></Export>
+  </Document>
+</Export>

@@ -35,5 +35,8 @@ Property Reference As %String(XMLPROJECTION = "attribute");
 /// See %JSONREQUIRED property parameter in %pkg.isc.json.propertyParameters
 Property Required As %Boolean(XMLPROJECTION = "attribute");
 
+/// See %JSONTYPE property parameter in %pkg.isc.json.propertyParameters
+Property JsonType As %String(XMLPROJECTION = "attribute");
+
 }
 

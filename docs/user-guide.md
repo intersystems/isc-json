@@ -19,12 +19,25 @@ The first place to start on understanding isc.json is to read up on the %JSON pa
 ## Overview: What's new in isc.json
 
 Features:
-* Support for %List datatype projection to/from arrays
-* Ability to easily include row IDs in JSON projection of persistent classes
-* "Studio Assist" schema for XData blocks
-* Ability to layer/extend mappings within a given class
-* Ability to replace collections rather than append on %JSONImport
-* Support for simple PascalCase->camelCase conversion by convention
+* Support for %List datatype projection to/from arrays.
+* Ability to easily include row IDs in JSON projection of persistent classes.
+* Ability to layer/extend mappings within a given class.
+* Support for simple PascalCase->camelCase conversion by convention.
+* %JSONMappingInfo is a new generated method that provides metadata of JSON projections (XData blocks 
+and the base mapping).
+* Data type class can have a new JSONTYPE of runtime instead of a static value.
+* %JSONNew provides a generated implementation in %JSONNewDefault for persistent classes to match 
+against provided ID or fields that are used for unique indices.
+* New method %JSONExportToDynamicObject to get complete closure of easily doing export/import directly
+to/from %DYnamicObject. 
+* New methods %JSONExportArray and %JSONImportArray to do bulk import/export.
+
+Enhancements:
+* "Studio Assist" schema for XData blocks.
+* Ability to replace collections rather than append on %JSONImport.
+* Support for import/export of properties that are %DynamicObject/%DynamicArray.
+* JSON export is done to %DynamicObject which is then exported to string/stream/current device as 
+needed which provides better performance and more gracefully handles `<MAXSTRING>` errors.
 
 Bug fixes:
 * Non-JSON-related XData blocks don't make class compilation fail
@@ -240,6 +253,112 @@ ClassMethod Demo()
 
 }
 ```
+
+### %JSONMappingInfo
+
+If you want to build any tooling that relies on the JSON projection of a class or just want to see the 
+metadata for the projections as an ObjectScript object, it is made available via this generated method.
+The method returns an instance of [`%pkg.isc.json.mappingInfo`](../cls/pkg/isc/json/mappingInfo.cls) with 
+top level info about the provided mapping (provide empty string to get info about the base mapping).
+
+Example:
+```
+Class isc.sample.json.mappingInfo Extends (%RegisteredObject, %pkg.isc.json.adaptor)
+{
+
+Property FirstName As %String;
+
+Property LastName As %String;
+
+XData FirstNameOnly [ XMLNamespace = "http://www.intersystems.com/_pkg/isc/json/jsonmapping" ]
+{
+<Mapping xmlns="http://www.intersystems.com/_pkg/isc/json/jsonmapping" IncludeID="true">
+<Property Name="FirstName" />
+</Mapping>
+}
+
+ClassMethod Demo()
+{
+	Set baseInfo = ..%JSONMappingInfo()
+	// Output: baseInfo.Properties will contain FirstName and LastName.
+	Set firstNameOnlyInfo = ..%JSONMappingInfo("FirstNameOnly")
+	// Output: baseInfo.Properties will contain only FirstName and baseInfo.IncludeID will be 1.
+}
+
+}
+```
+
+### Data types with JSONTYPE as runtime
+
+This is a somewhat niche feature and should not generally be needed. With this feature, a data type 
+class when created can be given a parameter of JSONTYPE set to runtime so that on export/import, based on the value, the output can dynamically have different JSON types (e.g. number or string). 
+
+When this is done, the following methods MUST be implemented in the data type class:
+```
+/// Returns a valid JSON type. See methods of %DynamicAbstracyObject for valid JSON types.
+ClassMethod GetJSONTYPE(value As %String) As %String
+{
+}
+
+/// Returns whether the value is valid for the given type
+ClassMethod IsValid(value As %String) As %Status
+{
+}
+
+/// Convert from JSON to ObjectScript logical value (used in JSON import)
+ClassMethod JSONToLogical(value As %String) As %String
+{
+    Return value
+}
+
+/// Convert from ObjectScript logical value to JSON (used in JSON export)
+ClassMethod LogicalToJSON(value As %String) As %String
+{
+    If ##class(%Integer).IsValid(value) {
+        Return value
+    }
+    Return $$$QUOTE(value)
+}
+```
+
+An example can be seen in [`UnitTest.isc.json.sample.intOrString`](../internal/testing/unit_tests/UnitTest/isc/json/sample/intOrString.cls).
+
+### %JSONNew generated implementation for %Persistent classes
+
+The `%JSONNew` method is used to generate a record of a class extending `%pkg.isc.json.adaptor`. It is 
+used when `%JSONImport` needs to be recusrively called for a property that is of a type that extends `%pkg.isc.json.adaptor`. `%JSONImport` is an instance method and so requires an object for it to be called on. 
+`%JSONNew` provides this object.
+
+The changes made to the `%JSONNew` method are the following:
+- New parameter mappingName is passed in to give the context of the JSON mapping in use during import.
+  - For backwards compatability, legacy `%JSONNew` without the third argument will also work.
+- `%JSONNew` will by default be a wrapper around a new method `%JSONNewDefault`.
+- `%JSONNewDefault` is generated as follows:
+  - For a non-persistent class: calls %New() on the class and returns the object.
+  - For a persistent class: matches against any unique indices and row IDs in the JSON input to identify
+  an existing record to open with `%OpenId`. If an existing record is not found, then a new record 
+  is created with `%New()` and returned. If properties to construct the unique index or the row ID is 
+  missing from the JSON input (either if not required or not in the JSON mapping), then corresponding 
+  attempts to match are not made. When matching, the following precedence is in effect:
+    - row ID
+    - IdKey index
+    - Unique indices in reverse alphabetical order (later in alphabet gets higher precedence than earlier)
+
+See examples in the generated code of [`UnitTest.isc.json.sample.jsonNew`](../internal/testing/unit_tests/UnitTest/isc/json/sample/jsonNew.cls) and [`UnitTest.isc.json.sample.jsonNewPersistent`](../internal/testing/unit_tests/UnitTest/isc/json/sample/jsonNewPersistent.cls).
+
+### %JSONExportToDynamicObject
+
+This is simply a new method following a similar format to other %JSONExport* methods.
+
+### %JSONImportArray and %JSONExportArray 
+
+These methods allow for bulk import and export of %DynamicArray. Read method documentation for detailed behavior.
+
+To summarize:
+- %JSONImport: Allows accumulating errors or throwing on the first error as well as saving while 
+importing for persistent records.
+- %JSONExport: Allows accumulating errors or throwing on the first error as well as a variety of source
+for export such as %List, %ListOfObjects, %ListOfDataTypes etc. Up-to-date sources are noted in the method documentation.
 
 ## Related Topics in InterSystems Documentation
 * [Using the JSON Adaptor](https://docs.intersystems.com/irislatest/csp/docbook/DocBook.UI.Page.cls?KEY=GJSON_adaptor)

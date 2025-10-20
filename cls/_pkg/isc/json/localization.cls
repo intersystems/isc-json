@@ -8,9 +8,11 @@ ClassMethod SetUpMsg() [ CodeMode = objectgenerator ]
 	#Execute Set writable = 1 Try { Set ^%qMsg("%ObjectErrors","en",-1) = "" Kill ^%qMsg("%ObjectErrors","en",-1) } Catch { Set writable = 0 }
 	#If writable
 		// Errors added in this implementation:
-		// $$$JSONReferencedTypeIsNotAdapted, $$$JSONInvalidIDPROJECTION
+		// $$$JSONReferencedTypeIsNotAdapted, $$$JSONInvalidIDPROJECTION, $$$JSONInvalidMapping, $$$JSONInvalidListForExportArray
 		Set errs($i(errs)) = $$$Text("@9450@Property '%1' in class '%2' is specified for JSON output as an object, but is of non-%JSONENABLED type '%3'.","%ObjectErrors","en")
 		Set errs($i(errs)) = $$$Text("@9451@%JSONPROJECTION for property '%1' in class '%2' may not be %3 unless this property is of a persistent type.","%ObjectErrors","en")
+		Set errs($i(errs)) = $$$Text("@9452@Non-existent mapping '%1' provided to method '%2' in class '%3'","%ObjectErrors","en")
+		Set errs($i(errs)) = $$$Text("@9453@Invalid format for input list for %JSONExportArray called on class: %1","%ObjectErrors","en")
 		
 		// $$$JSONPathExpressionError, $$$JSONPathEvalError
 		Set errs($i(errs)) = $$$Text("@9460@Error evaluating JSON path expression '%1'","%ObjectErrors","en")
@@ -22,4 +24,3 @@ ClassMethod SetUpMsg() [ CodeMode = objectgenerator ]
 }
 
 }
-

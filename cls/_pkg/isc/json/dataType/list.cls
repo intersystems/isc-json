@@ -18,7 +18,7 @@ ClassMethod LogicalToJSON(val As %List) As %String
 			Do array.%Push("","null")
 		}
 	}
-	Quit array.%ToJSON()
+	Quit array
 }
 
 /// Converts the SOAP encoded input list value into an ObjectScript $list value.
