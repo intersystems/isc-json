@@ -12,6 +12,11 @@
         <Resource Name="pkg.isc.json.lifecycle.CLS" Preload="true" />
         <Resource Name="%pkg.isc.json.PKG"/>
         <Resource Name="%pkg.isc.json.map.INC"/>
+        <Resource Name="/internal/testing/unit_tests/">
+          <!-- Sneaky way to avoid running tests multiple times. -->
+          <Attribute Name="Phase">test</Attribute>
+          <Attribute Name="Package">UnitTest.isc.json</Attribute>
+        </Resource>
       </Resources>
       <Mappings>
         <Mapping Name="%pkg.isc.json.PKG" Source="{$namespaceRoutineDB}"/>
