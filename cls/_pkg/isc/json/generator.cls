@@ -73,7 +73,7 @@ ClassMethod GenerateMapping(class As %String, Output mapping) As %Status [ Inter
 		Do ..GetMemberInfo(class,property,.includeProperty,.type,.membercat,.objJSONEnabled)
 		
 		If includeProperty {
-			// Default for %JSONINCLUDE is "inout"
+			// Default for 	%JSONINCLUDE is "inout"
 			If jsoninclude="" Set jsoninclude="inout"
 	
 			// Do not support array of streams
@@ -94,14 +94,13 @@ ClassMethod GenerateMapping(class As %String, Output mapping) As %Status [ Inter
 					Quit
 				}
 			} ElseIf membercat["LITERAL" {
-				Set literaltype=$$$comMemberKeyGet(type,$$$cCLASSparameter,"JSONTYPE",$$$cPARAMdefault)
-				If literaltype="" Set literaltype="string"
-			
-				// We need to differentiate between registered object strings and JSON strings.
-				// For example between %String and %Timestamp.
-				// A string is considered a registered object string if XSDTYPE, as well as JSONTYPE, is = "string".
-				If literaltype="string",$$$comMemberKeyGet(type,$$$cCLASSparameter,"XSDTYPE",$$$cPARAMdefault)'="string" {
-					Set literaltype="string/json"
+				// Allow property param level override of JSONTYPE
+				Set literaltype=$$$comMemberArrayGet(class,$$$cCLASSproperty,property,$$$cPROPparameter,"%JSONTYPE")
+				If (literaltype="") {
+					Set literaltype=$$$comMemberKeyGet(type,$$$cCLASSparameter,"JSONTYPE",$$$cPARAMdefault)
+				}
+				If (literaltype="") {
+					Set literaltype="string"
 				}
 			}
 			
@@ -189,7 +188,7 @@ ClassMethod GenerateMapping(class As %String, Output mapping) As %Status [ Inter
 	
 	// Copy nodes to map ordered by Sequence Number
 	If $$$ISOK(sc) {
-		Set mapping($c(1),0)=$lb(class,jsonignoreinvalidfield)
+		Set mapping($c(1),0)=$lb(class,jsonignoreinvalidfield,jsonincludeid,jsonidfield)
 
 		Set mapping($c(1))=0
 		Set cls=""
@@ -253,12 +252,15 @@ ClassMethod GetMemberInfo(class As %String, property As %String, ByRef includePr
 	
 	If includeProperty {
 		Set type=$$$comMemberKeyGet(class,$$$cCLASSproperty,property,$$$cPROPtype)
-		If type="" Set type="%Library.String"
-		Set typecat=$$$getClassType(type)
+		if (type ="%Library.DynamicObject") || (type ="%Library.DynamicArray") || (type ="%Library.DynamicAbstractObject") {
+			set membercat = "DYNAMIC"
+		} else {
+			If type="" Set type="%Library.String"
+			Set typecat=$$$getClassType(type)
 
-		// Get member category for base type
-		Set membercat=##class(%Compiler.XML.Generator.Adaptor).TypeToMembercat(type,typecat,.mixed)
-	
+			// Get member category for base type
+			Set membercat=##class(%Compiler.XML.Generator.Adaptor).TypeToMembercat(type,typecat,.mixed)
+		}
 		// If no membercat, then do not include property
 		If membercat="" Set includeProperty=0
 	}
@@ -272,7 +274,7 @@ ClassMethod GetMemberInfo(class As %String, property As %String, ByRef includePr
 			}
 		} Else {
 			If collection="" {
-				// Not a collection - LITERAL|OBJPERSISTENT|OBJSERIAL|OBJREGISTERED
+				// Not a collection - LITERAL|OBJPERSISTENT|OBJSERIAL|OBJREGISTERED|DYNAMIC
 				If (membercat'="LITERAL") {
 					// Get list of super classes
 					Kill typeSeq
@@ -570,6 +572,8 @@ ClassMethod GenerateMappingFromClass(class As %String, name As %String, obj As %
 
 	// Get %JSONIGNOREINVALIDFIELD parameter
 	Set jsonignoreinvalidfield=obj.IgnoreInvalidField
+	Set jsonincludeid=obj.IncludeID
+	Set jsonidfield=obj.IDField
 	
 	// Get %JSONMAPPING class parameter.
 	Set jsondefaultmapping=obj.Mapping
@@ -591,7 +595,7 @@ ClassMethod GenerateMappingFromClass(class As %String, name As %String, obj As %
 	Set jsonfieldnameascamelcase=''obj.FieldNameAsCamelCase
 
 	// Save mappng parameterd for entire class
-	Set mapping(name,0)=$lb(class,jsonignoreinvalidfield)
+	Set mapping(name,0)=$lb(class,jsonignoreinvalidfield,jsonincludeid,jsonidfield)
 	
 	// Special case: ID
 	If ''obj.IncludeID && ($$$comClassKeyGet(class,$$$cCLASSclasstype) = $$$cCLASSCLASSTYPEPERSISTENT) {
@@ -659,13 +663,6 @@ ClassMethod GenerateMappingFromClass(class As %String, name As %String, obj As %
 			} ElseIf membercat["LITERAL" {
 				Set literaltype=$$$comMemberKeyGet(type,$$$cCLASSparameter,"JSONTYPE",$$$cPARAMdefault)
 				If literaltype="" Set literaltype="string"
-			
-				// We need to differentiate between registered object strings and JSON strings.
-				// For example between %String and %Timestamp.
-				// A string is considered a registered object string if XSDTYPE, as well as JSONTYPE, is = "string".
-				If literaltype="string",$$$comMemberKeyGet(type,$$$cCLASSparameter,"XSDTYPE",$$$cPARAMdefault)'="string" {
-					Set literaltype="string/json"
-				}
 			}
 			
 			// Find if required
@@ -759,19 +756,43 @@ ClassMethod %JSONGenerate(%mode, %class, %property, %method, %parameter, %codemo
 	// Create the map from class properties
 	If 'abstract {
 		If $$$ISOK(sc) {
+			Set sc=..GenerateMappingInfo(.mapping)
+		}
+
+		If $$$ISOK(sc) {
+			Set sc=..GenerateAllJSONNewDefault(%class,.mapping)
+		}
+
+		If $$$ISOK(sc) {
 			Set sc=..GenerateAllImportInternal(%class,.mapping)
 		}
 
 		If $$$ISOK(sc) {
-			Set sc=..GenerateAllExportInternal(%class,.mapping,1)
-		}
-
-		If $$$ISOK(sc) {
-			Set sc=..GenerateAllExportInternal(%class,.mapping,0)
+			Set sc=..GenerateAllExportInternal(%class,.mapping)
 		}
 	}
 
 	Quit sc
+}
+
+/// Get the code for the %JSONNewDefault method to actually do the method generation
+ClassMethod JSONNewDefault(%mode, %class, %property, %method, %parameter, %codemode, %code, %classmodify, %context) As %Status [ Internal ]
+{
+	Set %code=0
+	If $$$comMemberKeyGet(%class,$$$cCLASSparameter,"%JSONENABLED",$$$cPARAMdefault) {
+		Merge %code=$$$tEXTcode("%JSONNewDefault")
+	}
+	Quit $$$OK
+}
+
+/// Get the code for the %JSONMappingInfo method to actually do the method generation
+ClassMethod JSONMappingInfo(%mode, %class, %property, %method, %parameter, %codemode, %code, %classmodify, %context) As %Status [ Internal ]
+{
+	Set %code=0
+	If $$$comMemberKeyGet(%class,$$$cCLASSparameter,"%JSONENABLED",$$$cPARAMdefault) {
+		Merge %code=$$$tEXTcode("%JSONMappingInfo")
+	}
+	Quit $$$OK
 }
 
 /// Get the code for the %JSONImportInternal method to actually do the method generation
@@ -804,27 +825,211 @@ ClassMethod JSONExportToStringInternal(%mode, %class, %property, %method, %param
 	Quit $$$OK
 }
 
-ClassMethod JSONNew(%mode, %class, %property, %method, %parameter, %codemode, %code, %classmodify, %context) As %Status
+/// Generate the code for the %JSONNewDefault method
+ClassMethod GenerateAllJSONNewDefault(class As %String, ByRef mapping As %String) As %Status [ Internal ]
 {
+	New %code
 	Set %code=0
-	If $$$comMemberKeyGet(%class,$$$cCLASSparameter,"%JSONENABLED",$$$cPARAMdefault) {
-		// Get default for %JSONINCLUDEID
-		Set jsonincludeid=''$$$comMemberKeyGet(%class,$$$cCLASSparameter,"%JSONINCLUDEID",$$$cPARAMdefault)
-		// Get default for %JSONIDFIELD
-		Set jsonidfield=$$$comMemberKeyGet(%class,$$$cCLASSparameter,"%JSONIDFIELD",$$$cPARAMdefault)
-		
-		If (($$$comClassKeyGet(%class,$$$cCLASSclasstype) = "persistent") && jsonincludeid) {
-			$$$GENERATE("  Set id = dynamicObject."_$$$QN(jsonidfield))
-			$$$GENERATE("  If ##class("_%class_").%ExistsId(id) {")
-			$$$GENERATE("    Quit ##class("_%class_").%OpenId(id)")
+	Set sc=$$$OK
+	
+	Try {
+		// Process all mappings except base
+		Set indent="    "
+		Set mappingName=""
+		Set count=0
+		For {
+			Set mappingName=$order(mapping(mappingName))
+			If mappingName="" Quit
+			$$$GENERATE("  "_$select(count=0:"If",1:"} ElseIf")_" %mappingName="""_$Case(mappingName, $c(1): "", : mappingName)_""" {")
+			Set count=count+1
+			Do ..GenerateJSONNewDefault(class,indent,mappingName,.mapping)
+		}
+
+		If count>0 {
 			$$$GENERATE("  } Else {")
-			$$$GENERATE("    Quit ##class("_%class_").%New()")
+			$$$GENERATE("    $$$ThrowStatus($$$ERROR($$$JSONInvalidMapping,%mappingName,""%JSONNewDefault"",$ClassName()))")
 			$$$GENERATE("  }")
+		}
+
+		// Save the code for this method
+		Merge $$$tEXTcode("%JSONNewDefault")=%code
+	} Catch ex {
+		Set sc=ex.AsStatus()
+	}
+	Quit sc
+}
+
+/// Generate the code for the %JSONNewDefault method for the specified mappingName.
+ClassMethod GenerateJSONNewDefault(class As %String, indent As %String, mappingName As %String, ByRef mapping As %String) [ Internal ]
+{
+	// Get default for %JSONINCLUDEID
+	Set jsonincludeid=$$$jsonincludeid(mapping,mappingName)
+	// Get default for %JSONIDFIELD
+	Set jsonidfield=$$$jsonidfield(mapping,mappingName)
+
+	// Accumulate mapping of property name to field name
+	Kill propNameToFieldName
+	For index=1:1:$$$jsonpropertycount(mapping,mappingName) {
+		Set propertyMap = $$$jsongetprop(mapping,mappingName,index)
+		Set fieldName = $$$jsonfieldname(propertyMap)
+		Set propName = $$$jsonproperty(propertyMap)
+		Set propNameToFieldName(propName) = fieldName
+	}
+	
+	If ($$$comClassKeyGet(%class,$$$cCLASSclasstype) '= $$$cCLASSCLASSTYPEPERSISTENT) {
+		$$$GENERATE(indent_"Return $Case(''$System.CLS.IsMthd("_$$$QUOTE(class)_", ""%New""), 1: ##class("_class_").%New(), : """")")
+		Return
+	}
+	// Persistent so see if we can find a record to import into
+	$$$GENERATE(indent_"Set id = """"")
+	// Iterate all indices to find a unique index
+	Set index = ""
+	Set idKeyIndexInfo = ""
+	While 1 {
+		Set index = $$$comMemberNext(class,$$$cCLASSindex,index)
+		If (index = "") {
+			Quit
+		}
+		Set idKey = $$$comMemberKeyGet(class,$$$cCLASSindex,index,$$$cINDEXidkey)
+		Set unique = $$$comMemberKeyGet(class,$$$cCLASSindex,index,$$$cINDEXunique)
+		If 'idKey && 'unique {
+			// Skip index since it cannot be used for unique import
+			Continue
+		}
+		Set props = $ListFromString($$$comMemberKeyGet(class,$$$cCLASSindex,index,$$$cINDEXproperties))
+		Set args = "", condition = ""
+		Set ptr = 0, missingField = 0
+		While $ListNext(props,ptr,prop) {
+			Set fieldName = $Get(propNameToFieldName(prop))
+			If (fieldName = "") {
+				// If field isn't present in JSON import, then index cannot be used
+				Set missingField = 1
+				Quit
+			}
+			Set arg = "dynamicObject."_$$$QN(fieldName)
+			Set args = args _ $ListBuild(arg)
+			Set condition = condition _ $ListBuild("("_arg_"'="""")")
+		}
+		If (missingField) || (args = "") {
+			Continue
+		}
+		If (idKey) {
+			// Keep track of id key to have it occur last (ensures it takes precedence)
+			Set idKeyIndexInfo = $ListBuild(condition,args)
 		} Else {
-			$$$GENERATE("  Quit ##class("_%class_").%New()")
+			$$$GENERATE(indent_"If ("_$ListToString(condition, "&&")_") {")
+			$$$GENERATE(indent_"  Do .."_index_"Exists("_$ListToString(args)_",.id)")
+			$$$GENERATE(indent_"}")
 		}
 	}
-	Quit $$$OK
+	// Use IdKey is present
+	If (idKeyIndexInfo '= "") {
+		Set $ListBuild(condition,args) = idKeyIndexInfo
+		$$$GENERATE(indent_"If ("_$ListToString(condition, "&&")_") {")
+		$$$GENERATE(indent_"  Set id = "_$ListToString(args,"_""||""_"))
+		$$$GENERATE(indent_"}")
+	}
+	// Use ID if present
+	If jsonincludeid {
+		$$$GENERATE(indent_"Set inputId = dynamicObject."_$$$QN(jsonidfield))
+		$$$GENERATE(indent_"If (inputId '= """") { Set id = inputId }")
+	}
+	// Final evaluation
+	$$$GENERATE(indent_"If (id '= """") && ..%ExistsId(id) {")
+	$$$GENERATE(indent_"  Return ##class("_class_").%OpenId(id)")
+	$$$GENERATE(indent_"}")
+	$$$GENERATE(indent_"Return ##class("_class_").%New()")
+}
+
+/// Generate the code for the %JSONMappingInfo method
+ClassMethod GenerateMappingInfo(ByRef mapping As %String) As %Status [ Internal ]
+{
+	New %code
+	Set %code = 0
+	Set sc = $$$OK
+	#define Generate(%line) $$$GENERATE($Char(9)_%line)
+	Try {
+		Set returnObjName = "obj"
+		Set propertyObjName = "prop"
+		$$$Generate("Set "_returnObjName_" = ##class(%pkg.isc.json.mappingInfo).%New()")
+		Set mappingName = ""
+		Set isFirst = 1
+		While 1 {
+			Set mappingName = $Order(mapping(mappingName))
+			If (mappingName = "") {
+				Quit
+			}
+			Merge mappingInfo = mapping(mappingName)
+			Set isDefault = (mappingName = $Char(1))
+			Set actualMappingName = mappingName
+			If (isDefault) {
+				Set actualMappingName = ""
+			}
+			If (isFirst) {
+				$$$Generate("If (%mappingName = "_$$$QUOTE(actualMappingName)_") {")
+				Set isFirst = 0
+			} Else {
+				$$$Generate("} ElseIf (%mappingName = "_$$$QUOTE(actualMappingName)_") {")
+			}
+			If ('isDefault) {
+				// Add mapping name
+				$$$Generate($Char(9)_"Set "_returnObjName_".Mapping = "_$$$QUOTE(mappingName))
+			}
+			Set $ListBuild(classname, ignoreInvalidField, includeID, idField) = $Get(mappingInfo(0))
+			$$$Generate($Char(9)_"Set "_returnObjName_".Classname = "_$$$QUOTE(classname))
+			$$$Generate($Char(9)_"Set "_returnObjName_".IgnoreInvalidField = "_ignoreInvalidField)
+			$$$Generate($Char(9)_"Set "_returnObjName_".IncludeID = "_includeID)
+			$$$Generate($Char(9)_"Set "_returnObjName_".IDField = "_$$$QUOTE(idField))
+			// Iterate all properties in mapping and add them to return object
+			For i = 1:1:$Get(mappingInfo) {
+				Set $ListBuild(
+					propertyName,
+					normalizedPropertyName,
+					jsoninclude,
+					jsonfieldname,
+					jsonnull,
+					jsonignorenull,
+					jsonreference,
+					required,
+					literaltype,
+					membercat,
+					type,
+					jsonmapping
+				) = $Get(mappingInfo(i))
+				Set line = "Set "_propertyObjName_" = ##class(%pkg.isc.json.mappingInfo.property).%New("_
+					$$$QUOTE(propertyName)_","_
+					$$$QUOTE(normalizedPropertyName)_","_
+					$$$QUOTE(jsoninclude)_","_
+					$$$QUOTE(jsonfieldname)_","_
+					jsonnull_","_
+					jsonignorenull_","_
+					$$$QUOTE(jsonreference)_","_
+					required_","_
+					$$$QUOTE(literaltype)_","_
+					$$$QUOTE(membercat)_","_
+					$$$QUOTE(type)_","_
+					$$$QUOTE($Get(jsonmapping))_
+				")"
+				$$$Generate($Char(9)_line)
+				$$$Generate($Char(9)_"$$$ThrowOnError("_returnObjName_".Properties.Insert("_propertyObjName_"))")
+			}
+			$$$Generate($Char(9)_"Return "_returnObjName)
+		}
+		If ('isFirst) {
+			// Only apply final closing bracket if at least one iteration of loop
+			// which would toggle isFirst to 0
+			$$$Generate("}")
+		}
+
+		// Return "" if matched against no mapping
+		$$$Generate("Return """" ")
+
+		// Save the code for this method
+		Merge $$$tEXTcode("%JSONMappingInfo")=%code
+	} Catch (ex) {
+		Set sc = ex.AsStatus()
+	}
+	Return sc
 }
 
 /// Generate the code for the %JSONImportInternal method
@@ -839,28 +1044,23 @@ ClassMethod GenerateAllImportInternal(class As %String, ByRef mapping As %String
 		Set needTestInvalidField=0
 		Set needRequired=0
 		
-		// Process all mappings except base
-		Set indent=""
-		Set mappingName=$c(1)
+		Set indent="  "
+		Set mappingName=""
 		Set count=0
 		For {
 			Set mappingName=$order(mapping(mappingName))
 			If mappingName="" Quit
-			$$$GENERATE("  "_$select(count=0:"If",1:"} ElseIf")_" %mappingName="""_mappingName_""" {")
+			$$$GENERATE("  "_$select(count=0:"If",1:"} ElseIf")_" %mappingName="""_$Case(mappingName, $c(1): "", : mappingName)_""" {")
 			Set count=count+1
-			Set indent="  "
 			Set sc=..GenerateImportInternal(class,indent,mappingName,.mapping,.needRequired,.needTestInvalidField)
-			If $$$ISERR(sc) Quit
+			$$$ThrowOnError(sc)
 		}
-		If $$$ISERR(sc) Quit
 
-		// Add in base mapping.
-		If $Data(mapping($c(1))) {
-			If count>0 $$$GENERATE("  } Else {")
-			Set sc=..GenerateImportInternal(class,indent,$c(1),.mapping,.needRequired,.needTestInvalidField)
-			If $$$ISERR(sc) Quit
+		If count>0 {
+			$$$GENERATE("  } Else {")
+			$$$GENERATE("    $$$ThrowStatus($$$ERROR($$$JSONInvalidMapping,%mappingName,""%JSONImportInternal"",$ClassName()))")
+			$$$GENERATE("  }")
 		}
-		If count>0 $$$GENERATE("  }")
 		
 		// Generate code to check for invalid field
 		If needTestInvalidField {
@@ -1015,13 +1215,26 @@ ClassMethod GenImportField(class As %String, propertyMap As %List, indent As %St
 			// Generate code to import character stream
 			Do ..GenImportCharacterStream(class,propertyMap,indent,isCollectionValue)
 		}
-
+	} ElseIf membercat = "DYNAMIC" {
+		Do ..GenDynamic(class,propertyMap,indent,isCollectionValue)
 	} Else {
 		// Generate code to import literals
 		Do ..GenImportLiteral(class,propertyMap,indent,isCollectionValue)
 	}
 
 	$$$GENERATE(indent_"}")
+}
+
+/// Generate code for importing an %DynamicObject and storing the object reference in variable named data.
+ClassMethod GenDynamic(class As %String, propertyMap As %List, indent As %String, isCollectionValue As %Integer) [ Internal ]
+{
+	$$$GENERATE("    Set json =%JSONObject."_ $$$jsonfieldname(propertyMap))
+	set declaredType = $$$jsontype(propertyMap)
+	// If present, then must be the expected JSON type
+	$$$GENERATE(indent_"  If '($IsObject(json) && json.%IsA("""_declaredType_""")) Goto %JSONImportError")
+	// Get the field value
+	set indent = indent _ "  "
+	$$$GENERATE(indent _ "Set .." _ $$$QN($$$jsonproperty(propertyMap))_"= json")
 }
 
 /// Generate code for importing an object ID and storing the object reference in variable named data.
@@ -1032,9 +1245,9 @@ ClassMethod GenImportID(class As %String, propertyMap As %List, indent As %Strin
 	// Get the field value
 	If isCollectionValue {
 		Set indexarg=$select(isCollectionValue=$$$isCollectionList:"index+1",1:"index")
-		$$$GENERATE(indent_"  Do .."_$$$jsonpropertyQN(propertyMap)_".SetObjectIdAt(value,"_indexarg_")")
+		$$$GENERATE(indent_"  $$$ThrowOnError(.."_$$$jsonpropertyQN(propertyMap)_".SetObjectIdAt(value,"_indexarg_"))")
 	} Else {
-		$$$GENERATE(indent_"  Do .."_$$$QN($$$jsonproperty(propertyMap)_"SetObjectId")_"(%JSONObject."_$$$QN($$$jsonfieldname(propertyMap))_")")
+		$$$GENERATE(indent_"  $$$ThrowOnError(.."_$$$QN($$$jsonproperty(propertyMap)_"SetObjectId")_"(%JSONObject."_$$$QN($$$jsonfieldname(propertyMap))_"))")
 	}
 }
 
@@ -1048,10 +1261,10 @@ ClassMethod GenImportOID(class As %String, propertyMap As %List, indent As %Stri
 	Set exp="$lb($piece("_var_","","",2,*),$piece("_var_","","",1))"
 	If isCollectionValue {
 		Set indexarg=$select(isCollectionValue=$$$isCollectionList:"index+1",1:"index")
-		$$$GENERATE(indent_"  Do .."_$$$jsonpropertyQN(propertyMap)_".SetObjectAt("_exp_","_indexarg_")")
+		$$$GENERATE(indent_"  $$$ThrowOnError(.."_$$$jsonpropertyQN(propertyMap)_".SetObjectAt("_exp_","_indexarg_"))")
 	} Else {
 		$$$GENERATE(indent_"  Set data=%JSONObject."_$$$QN($$$jsonfieldname(propertyMap)))
-		$$$GENERATE(indent_"  Do .."_$$$QN($$$jsonproperty(propertyMap)_"SetObject")_"("_exp_")")
+		$$$GENERATE(indent_"  $$$ThrowOnError(.."_$$$QN($$$jsonproperty(propertyMap)_"SetObject")_"("_exp_"))")
 	}
 }
 
@@ -1063,9 +1276,9 @@ ClassMethod GenImportGUID(class As %String, propertyMap As %List, indent As %Str
 	// Get the field value
 	If isCollectionValue {
 		Set indexarg=$select(isCollectionValue=$$$isCollectionList:"index+1",1:"index")
-		$$$GENERATE(indent_"  Do .."_$$$jsonpropertyQN(propertyMap)_".SetObjectAt(##class(%Library.GUID).%GUIDFind(value),"_indexarg_")")
+		$$$GENERATE(indent_"  $$$ThrowOnError(.."_$$$jsonpropertyQN(propertyMap)_".SetObjectAt(##class(%Library.GUID).%GUIDFind(value),"_indexarg_"))")
 	} Else {
-		$$$GENERATE(indent_"  Do .."_$$$QN($$$jsonproperty(propertyMap)_"SetObject")_"(##class(%Library.GUID).%GUIDFind(%JSONObject."_$$$QN($$$jsonfieldname(propertyMap))_"))")
+		$$$GENERATE(indent_"  $$$ThrowOnError(.."_$$$QN($$$jsonproperty(propertyMap)_"SetObject")_"(##class(%Library.GUID).%GUIDFind(%JSONObject."_$$$QN($$$jsonfieldname(propertyMap))_")))")
 	}
 }
 
@@ -1075,20 +1288,25 @@ ClassMethod GenImportObject(class As %String, propertyMap As %List, indent As %S
 	Set mappingName=$$$jsonmapping(propertyMap)
 	// If present, then must be the expected JSON type
 	$$$GENERATE(indent_"  If jsontype=""object"" {")
-	// Get a new empty object
+	// Get a new starting object
 	$$$GENERATE(indent_"    Set saveJSON=%JSONObject")
 	$$$GENERATE(indent_"    Set %JSONObject="_$select(isCollectionValue:"value",1:"%JSONObject."_$$$QN($$$jsonfieldname(propertyMap))))
-	$$$GENERATE(indent_"    Set newobj=##class("_$$$jsontype(propertyMap)_").%JSONNew(%JSONObject,$this)")
-	// Get the field value
-	If mappingName'="" {
-		$$$GENERATE(indent_"    Set saveMapping=%mappingName,%mappingName="""_mappingName_"""")
-	}
+	$$$GENERATE(indent_"    Set saveMapping=%mappingName,%mappingName="""_mappingName_"""")
+	// Call %JSONNew with either 3 args or 2 for backwards compatibility based on whether it 
+	// supports mappingName as the third arg
+	$$$GENERATE(indent_"    Set formalSpecLen=$ListLength($$$comMemberKeyGet("_$$$QUOTE($$$jsontype(propertyMap))_",$$$cCLASSmethod,""%JSONNew"",$$$cMETHformalspecparsed))")
+	$$$GENERATE(indent_"    If (formalSpecLen = 3) {")
+	$$$GENERATE(indent_"    	Set newobj=##class("_$$$jsontype(propertyMap)_").%JSONNew(%JSONObject,$this,%mappingName)")
+	$$$GENERATE(indent_"    } Else {")
+	$$$GENERATE(indent_"    	Set newobj=##class("_$$$jsontype(propertyMap)_").%JSONNew(%JSONObject,$this)")
+	$$$GENERATE(indent_"    }")
 	// Call adapter for referenced object.
-	$$$GENERATE(indent_"    Set sc=newobj.%JSONImportInternal()")
+	$$$GENERATE(indent_"    Set sc=$$$OK")
+	$$$GENERATE(indent_"    If $IsObject($Get(newobj)) {")
+	$$$GENERATE(indent_"      Set sc=newobj.%JSONImportInternal()")
+	$$$GENERATE(indent_"    }")
 	$$$GENERATE(indent_"    Set %JSONObject=saveJSON")
-	If mappingName'="" {
-		$$$GENERATE(indent_"    Set %mappingName=saveMapping")
-	}
+	$$$GENERATE(indent_"    Set %mappingName=saveMapping")
 	$$$GENERATE(indent_"    If $$$ISERR(sc) Goto %JSONImportExit")
 	If isCollectionValue=$$$isCollectionList {
 		// Generate code to save value in list
@@ -1193,8 +1411,15 @@ ClassMethod GenImportLiteral(class As %String, propertyMap As %List, indent As %
 	// If present, then must be the expected JSON type
 	If literaltype="double" {
 		$$$GENERATE(indent_"  If jsontype'=""number"",jsontype'=""string"" Goto %JSONImportError")
+	} ElseIf literaltype="runtime" {
+		Set methodName="GetJSONTYPE"
+		Set haveGetJsontype=$$$defMemberDefined(type,$$$cCLASSmethod,methodName)
+		If 'haveGetJsontype {
+			$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("With JSONTYPE of runtime, %1() method MUST be defined for data type %2 on property '%3'",methodName,type,property)))
+		}
+		$$$GENERATE(indent_"  If jsontype'=##class("_type_")."_methodName_"(%JSONObject."_$$$QN($$$jsonfieldname(propertyMap))_") Goto %JSONImportError")
 	} Else {
-		$$$GENERATE(indent_"  If jsontype'="""_$piece(literaltype,"/",1)_""" Goto %JSONImportError")
+		$$$GENERATE(indent_"  If jsontype'="""_literaltype_""" Goto %JSONImportError")
 	}
 	// Get the field value
 	If isCollectionValue {
@@ -1214,6 +1439,9 @@ ClassMethod GenImportLiteral(class As %String, propertyMap As %List, indent As %
 			Set haveJSONToLogical=##class(%Compiler.XML.Generator.Adaptor).getSingleLine(class,property,type,"XSDToLogical",.parms,var,.codeJSONToLogical)
 		}
 		Set haveIsValid=##class(%Compiler.XML.Generator.Adaptor).getSingleLine(class,property,type,"IsValid",.parms,var,.codeIsValid)
+		If (literaltype="runtime") && '(haveIsValid && haveJSONToLogical) {
+			$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("With JSONTYPE of runtime, IsValid() and JSONToLogical() methods MUST be defined for data type %1 on property '%2'",type,property)))
+		}
 		
 		// Call datatype methods
 		Set line=""
@@ -1221,7 +1449,8 @@ ClassMethod GenImportLiteral(class As %String, propertyMap As %List, indent As %
 			Set line=line_" Set "_var_"="_codeJSONToLogical_" Goto:"_var_"="""" %JSONImportError"
 		}
 		If haveIsValid {
-			Set line=line_" If $$$ISERR("_codeIsValid_") Goto %JSONImportError"
+			Set line=line_" Set sc = "_codeIsValid
+			Set line=line_" If $$$ISERR(sc) Goto %JSONImportExit"
 		}
 		If line'="" {
 			If useProperty {
@@ -1253,55 +1482,33 @@ ClassMethod GenImportLiteral(class As %String, propertyMap As %List, indent As %
 }
 
 /// Generate the code for the %JSONExportInternal method
-ClassMethod GenerateAllExportInternal(class As %String, ByRef mapping As %String, useWrite As %Boolean) As %Status [ Internal ]
+ClassMethod GenerateAllExportInternal(class As %String, ByRef mapping As %String) As %Status [ Internal ]
 {
-	New %code,%outputCode,%exitCode,%objectCode
+	New %code
 	Set %code=0
+	// Comes from %JSONExportToDynamicObject
+	Set %exportVar = "%export"
 	Set sc=$$$OK
 	
-	Try {
-		// Setup the output code for write or string concatenation.
-		If useWrite {
-			Set %outputCode="Write "
-			Set %exitCode="%JSONExportExit"
-			Set %objectCode="%JSONExportInternal"
-		} Else {
-			Set %outputCode="Set %export=%export_"
-			Set %exitCode="%JSONExportExitToString"
-			Set %objectCode="%JSONExportToStringInternal"
-		}
-		
-		// Begin output of code
-		$$$GENERATE("  Set sc=$$$OK")
-		$$$GENERATE("  "_%outputCode_"""{"" Set sep=""""")
-		
-		// Process all mappings except base
-		Set indent=""
-		Set mappingName=$c(1)
+	Try {		
+		Set indent="    "
+		Set mappingName=""
 		Set count=0
 		For {
 			Set mappingName=$order(mapping(mappingName))
 			If mappingName="" Quit
-			$$$GENERATE("  "_$select(count=0:"If",1:"} ElseIf")_" %mappingName="""_mappingName_""" {")
+			$$$GENERATE("  "_$select(count=0:"If",1:"} ElseIf")_" %mappingName="""_$Case(mappingName, $c(1): "", : mappingName)_""" {")
 			Set count=count+1
-			Set indent="  "
-			Set sc=..GenerateExportInternal(class,indent,mappingName,.mapping)
-			If $$$ISERR(sc) Quit
+			Do ..GenerateExportInternal(class,indent,mappingName,.mapping)
 		}
-		If $$$ISERR(sc) Quit
 
-		// Add in base mapping.
-		If count>0 $$$GENERATE("  } Else {")
-		Set sc=..GenerateExportInternal(class,indent,$c(1),.mapping)
-		If $$$ISERR(sc) Quit
-		If count>0 $$$GENERATE("  }")
-		
-    	$$$GENERATE("  "_%outputCode_"""}""")
-		$$$GENERATE(%exitCode_" Quit sc")
-
+		If count>0 {
+			$$$GENERATE("  } Else {")
+			$$$GENERATE("    $$$ThrowStatus($$$ERROR($$$JSONInvalidMapping,%mappingName,""%JSONExportInternal"",$ClassName()))")
+			$$$GENERATE("  }")
+		}
 		// Save the code for this method
-		Merge $$$tEXTcode("%JSONExport"_$select(useWrite:"",1:"ToString")_"Internal")=%code
-
+		Merge $$$tEXTcode("%JSONExportInternal")=%code
 	} Catch ex {
 		Set sc=ex.AsStatus()
 	}
@@ -1326,7 +1533,7 @@ ClassMethod GenerateExportInternal(class As %String, indent As %String, mappingN
 		Set membercat=$$$jsonmembercat(propertyMap)
 		If membercat["Collection" {
 			// Generate code to import collections
-			$$$GENERATE("    Set aval=.."_$$$jsonpropertyQN(propertyMap))
+			$$$GENERATE(indent_"Set aval=.."_$$$jsonpropertyQN(propertyMap))
 			If membercat["List" {
 				// Generate code to import lists
 				Do ..GenExportList(class,propertyMap,indent)
@@ -1334,14 +1541,12 @@ ClassMethod GenerateExportInternal(class As %String, indent As %String, mappingN
 				// Generate code to import arrays
 				Do ..GenExportArray(class,propertyMap,indent)
 			}
-			
 		} Else {
 			// Generate code to import this non-collection field
-			$$$GENERATE(indent_"  Set value=.."_$$$jsonpropertyQN(propertyMap))
+			$$$GENERATE(indent_"Set value=.."_$$$jsonpropertyQN(propertyMap))
 			Do ..GenExportField(class,propertyMap,fieldname,indent,0)
 		}
 	}
-		
 	Quit sc
 }
 
@@ -1358,15 +1563,15 @@ ClassMethod GenExportList(class As %String, propertyMap As %List, indent As %Str
 	} Else {
 		Set nextFunction="GetNext"
 	}
-	$$$GENERATE(indent_"  If aval.Count()>0 {")
-	Do ..GenWriteField($$$jsonfieldname(propertyMap),indent_"  ","")
-	$$$GENERATE(indent_"    Set sep=""[""")
-	$$$GENERATE(indent_"    Set k="""" For {")
-	$$$GENERATE(indent_"      Set value=aval."_nextFunction_"(.k) If k="""" Quit")
-	Do ..GenExportField(class,propertyMap,"","      ",$$$isCollectionList)
-	$$$GENERATE(indent_"    }")
-   	$$$GENERATE(indent_"    "_%outputCode_"""]""")
-   	$$$GENERATE(indent_"  }")
+	$$$GENERATE(indent_"If aval.Count()>0 {")
+	$$$GENERATE(indent_"  Set arr=[]")
+	$$$GENERATE(indent_"  Set k=""""")
+	$$$GENERATE(indent_"  For {")
+	$$$GENERATE(indent_"    Set value=aval."_nextFunction_"(.k) If k="""" Quit")
+	Do ..GenExportField(class,propertyMap,"",indent_"    ",$$$isCollectionList)
+	$$$GENERATE(indent_"  }")
+   	Do ..GenSetField($$$jsonfieldname(propertyMap),indent_"  ","arr")
+   	$$$GENERATE(indent_"}")
 }
 
 /// Generate code for exporting an array collection value from JSON object of the form {"key":value,...}
@@ -1382,16 +1587,18 @@ ClassMethod GenExportArray(class As %String, propertyMap As %List, indent As %St
 	} Else {
 		Set nextFunction="GetNext"
 	}
-	$$$GENERATE(indent_"  If aval.Count()>0 {")
-	Do ..GenWriteField($$$jsonfieldname(propertyMap),indent_"  ","")
-	$$$GENERATE(indent_"    Set sep=""{""")
-	$$$GENERATE(indent_"    Set aval=.."_$$$jsonpropertyQN(propertyMap)_",k=""""")
-	$$$GENERATE(indent_"    For {")
-	$$$GENERATE(indent_"      Set value=aval."_nextFunction_"(.k) If k="""" Quit")
-	Do ..GenExportField(class,propertyMap,$c(1)_"k",indent_"    ",$$$isCollectionArray)
-	$$$GENERATE(indent_"    }")
-   	$$$GENERATE(indent_"    "_%outputCode_"""}""")
-   	$$$GENERATE(indent_"  }")
+	$$$GENERATE(indent_"If aval.Count()>0 {")
+	$$$GENERATE(indent_"  Set obj={}")
+	$$$GENERATE(indent_"  Set k=""""")
+	$$$GENERATE(indent_"  For {")
+	$$$GENERATE(indent_"    Set value=aval."_nextFunction_"(.k) If k="""" Quit")
+	Set original = %exportVar
+	Set %exportVar = "obj"
+	Do ..GenExportField(class,propertyMap,$c(1)_"k",indent_"    ",$$$isCollectionList)
+	Set %exportVar = original
+	$$$GENERATE(indent_"  }")
+   	Do ..GenSetField($$$jsonfieldname(propertyMap),indent_"  ","obj")
+   	$$$GENERATE(indent_"}")
 }
 
 /// Generate code for exporting a single field value.
@@ -1403,66 +1610,70 @@ ClassMethod GenExportField(class As %String, propertyMap As %List, fieldName As 
 	If membercat["OBJ" {
 		// Handle no object specified.
 		Set serialTest=$select(membercat["SERIAL":"&&'value.%IsNull()",1:"")
-		$$$GENERATE(indent_"  If value'="""""_serialTest_" {")
-		Set indent=indent_"  "
+		$$$GENERATE(indent_"If value'="""""_serialTest_" {")
+		Set indentExtra = indent_"  "
 		// Output JSON for the object reference
 		Set reference=$$$jsonreference(propertyMap)
 		If reference=$$$jsonrefid {
 			// Generate code to export object ID.
-			Do ..GenExportID(class,propertyMap,fieldName,indent,isCollectionValue)
+			Do ..GenExportID(class,propertyMap,fieldName,indentExtra,isCollectionValue)
 		} ElseIf reference=$$$jsonrefoid {
 			// Generate code to export object OID.
-			Do ..GenExportOID(class,propertyMap,fieldName,indent,isCollectionValue)
+			Do ..GenExportOID(class,propertyMap,fieldName,indentExtra,isCollectionValue)
 		} ElseIf reference=$$$jsonrefguid {
 			// Generate code to export object GUID.
-			Do ..GenExportGUID(class,propertyMap,fieldName,indent,isCollectionValue)
+			Do ..GenExportGUID(class,propertyMap,fieldName,indentExtra,isCollectionValue)
 		} Else {
 			// Generate code to export object references.
-			Do ..GenExportObject(class,propertyMap,fieldName,indent,isCollectionValue)
+			Do ..GenExportObject(class,propertyMap,fieldName,indentExtra,isCollectionValue)
 		}
-
 	} ElseIf membercat["STREAM" {
 		// Handle no stream specified.
 		If $$$jsonliteraltype(propertyMap)="string",$$$jsonignorenull(propertyMap) {
 			Set needClosingBrace=0
 		} Else {
-			$$$GENERATE(indent_"  If (value'="""")&&'value.IsNull() {")
-			Set indent=indent_"  "
+			$$$GENERATE(indent_"If (value'="""")&&'value.IsNull() {")
 		}
+		Set indentExtra = indent_"  "
 		// Output stream
 		If membercat="BSTREAM" {
 			// Generate code to export binary stream
-			Do ..GenExportBinaryStream(class,propertyMap,fieldName,indent,isCollectionValue)
+			Do ..GenExportBinaryStream(class,propertyMap,fieldName,indentExtra,isCollectionValue)
 		} Else {
 			// Generate code to export character stream
-			Do ..GenExportCharacterStream(class,propertyMap,fieldName,indent,isCollectionValue)
+			Do ..GenExportCharacterStream(class,propertyMap,fieldName,indentExtra,isCollectionValue)
 		}
-
+	} ElseIf membercat = "DYNAMIC" {
+		Do ..GenExportDynamic(class,propertyMap,fieldName,indent,isCollectionValue)
 	} Else {
 		// Handle no value specified.
 		If $$$jsonliteraltype(propertyMap)="string",$$$jsonignorenull(propertyMap) {
 			Set needClosingBrace=0
+			Set indentExtra = indent
 		} Else {
-			$$$GENERATE(indent_"  If value'="""" {")
-			Set indent=indent_"  "
+			$$$GENERATE(indent_"If value'="""" {")
+			Set indentExtra = indent _ "  "
 		}
 		// Generate code to export literals
-		Do ..GenExportLiteral(class,propertyMap,fieldName,indent,isCollectionValue)
+		Do ..GenExportLiteral(class,propertyMap,fieldName,indentExtra,isCollectionValue)
 	}
 	
    	If needClosingBrace {
 		If isCollectionValue || ($$$jsonnull(propertyMap) && '$$$jsonignorenull(propertyMap)) {
 			$$$GENERATE(indent_"} Else {")
-			Do ..GenWriteField(fieldName,indent,"""null""")
+			Do ..GenSetField(fieldName,indent_"  ","""""","""null""")
 	   		$$$GENERATE(indent_"}")
-		   	$$$GENERATE(indent_"Set $extract(sep,1)="",""")
 		} Else {
-		   	$$$GENERATE(indent_"  Set $extract(sep,1)="",""")
 	   		$$$GENERATE(indent_"}")
 		}
-	} Else {
-	   	$$$GENERATE(indent_"  Set $extract(sep,1)="",""")
 	}
+}
+
+/// Generate code for exporting a %DynamicObject as JSON.
+ClassMethod GenExportDynamic(class As %String, propertyMap As %List, fieldName As %String, indent As %String, isCollectionValue As %Integer) [ Internal ]
+{
+	$$$GENERATE(indent_"If (value'="""") {")
+	Do ..GenSetField(fieldName,indent _ "  ","value")
 }
 
 /// Generate code for exporting an object ID as JSON.
@@ -1471,9 +1682,9 @@ ClassMethod GenExportID(class As %String, propertyMap As %List, fieldName As %St
 	// Write the field value
 	If isCollectionValue {
 		// GetObjectNextId already returned id
-		Do ..GenWriteField(fieldName,indent,"""""""""_$zcvt(value,""O"",""JSON"")_""""""""")
+		Do ..GenSetField(fieldName,indent,"value")
 	} Else {
-		Do ..GenWriteField(fieldName,indent,"""""""""_$zcvt(value.%Id(),""O"",""JSON"")_""""""""")
+		Do ..GenSetField(fieldName,indent,"value.%Id()")
 	}
 }
 
@@ -1483,52 +1694,49 @@ ClassMethod GenExportOID(class As %String, propertyMap As %List, fieldName As %S
 	// Write the field value
 	If isCollectionValue {
 		// GetObjectNextId already returned oid
-		Do ..GenWriteField(fieldName,indent,"""""""""_$select($listget(value,2)="""":$listget(aval.GetAt(k).%Oid(),2),1:$listget(value,2))_"",""_$listget(value)_""""""""")
+		Do ..GenSetField(fieldName,indent,"$select($listget(value,2)="""":$listget(aval.GetAt(k).%Oid(),2),1:$listget(value,2))_"",""_$listget(value)")
 	} Else {
-		Do ..GenWriteField(fieldName,indent,"""""""""_$listget(value.%Oid(),2)_"",""_$listget(value.%Oid())_""""""""")
+		Do ..GenSetField(fieldName,indent,"$listget(value.%Oid(),2)_"",""_$listget(value.%Oid())")
 	}
 }
 
 /// Generate code for exporting an object GUID as JSON.
 ClassMethod GenExportGUID(class As %String, propertyMap As %List, fieldName As %String, indent As %String, isCollectionValue As %Integer) [ Internal ]
 {
-	Do ..GenWriteField(fieldName,indent,"""""""""_value.%GUID(value.%Oid())_""""""""")
+	Do ..GenSetField(fieldName,indent,"value.%GUID(value.%Oid())")
 }
 
 /// Generate code for exporting a referenced object as JSON.
 ClassMethod GenExportObject(class As %String, propertyMap As %List, fieldName As %String, indent As %String, isCollectionValue As %Integer) [ Internal ]
 {
 	Set mappingName=$$$jsonmapping(propertyMap)
-	If mappingName'="" {
-		$$$GENERATE(indent_"  Set saveMapping=%mappingName,%mappingName="""_mappingName_"""")
-	}
-	// Write the field value
-	Do ..GenWriteField(fieldName,indent,"")
-	$$$GENERATE(indent_"  Set sc=value."_%objectCode_"() If $$$ISERR(sc) Goto "_%exitCode)
-	If mappingName'="" {
-		$$$GENERATE(indent_"  Set %mappingName=saveMapping")
-	}
+	$$$GENERATE(indent_"Set mappingName="""_mappingName_"""")
+	$$$GENERATE(indent_"$$$ThrowOnError(value.%JSONExportToDynamicObject(.nestedJson,mappingName))")
+	Do ..GenSetField(fieldName,indent,"nestedJson")
 }
 
 /// Generate code for exporting a binary stream as JSON.
 ClassMethod GenExportBinaryStream(class As %String, propertyMap As %List, fieldName As %String, indent As %String, isCollectionValue As %Integer) [ Internal ]
 {
-	Do ..GenWriteField(fieldName,indent,"")
 	If $$$jsonliteraltype(propertyMap)["hex" {
-		$$$GENERATE(indent_"  "_%outputCode_""""""""" Do value.Rewind() If value.Size>0 { While 'value.AtEnd { ")
-		$$$GENERATE(indent_"    Set first=value.Read(.len,.sc) If $$$ISERR(sc) Goto "_%exitCode)
-    	$$$GENERATE(indent_"    For k=1:1:$length(first) {"_%outputCode_"$select($ascii(first,k)<16:""0"",1:"""")_$zhex($ascii(first,k)) }")
-		$$$GENERATE(indent_"  }} "_%outputCode_"""""""""")
+		$$$GENERATE(indent_"Do value.Rewind()")
+		$$$GENERATE(indent_"Set hexString=""""")
+		$$$GENERATE(indent_"If value.Size>0 { While 'value.AtEnd { ")
+		$$$GENERATE(indent_"  Set first=value.Read(.len,.sc) $$$ThrowOnError(sc)")
+    	$$$GENERATE(indent_"  For k=1:1:$length(first) {")
+    	$$$GENERATE(indent_"    Set hexString=hexString_$select($ascii(first,k)<16:""0"",1:"""")_$zhex($ascii(first,k))")
+    	$$$GENERATE(indent_"  }")
+		$$$GENERATE(indent_"}}")
+		Do ..GenSetField(fieldName,indent,"hexString","""string""")
 	} Else {
-		$$$GENERATE(indent_"  "_%outputCode_""""""""" Do value.Rewind() If value.Size>0 { While 'value.AtEnd { "_%outputCode_"$system.Encryption.Base64Encode(value.Read(,.sc),1) If $$$ISERR(sc) Goto "_%exitCode_" }} "_%outputCode_"""""""""")
+		Do ..GenSetField(fieldName,indent,"value","""stream>base64""")
 	}
 }
 
 /// Generate code for exporting a character stream as JSON.
 ClassMethod GenExportCharacterStream(class As %String, propertyMap As %List, fieldName As %String, indent As %String, isCollectionValue As %Integer) [ Internal ]
 {
-	Do ..GenWriteField(fieldName,indent,"")
-	$$$GENERATE(indent_"  "_%outputCode_""""""""" Do value.Rewind() If value.Size>0 { While 'value.AtEnd { "_%outputCode_"$zcvt(value.Read(,.sc),""O"",""JSON"") If $$$ISERR(sc) Goto "_%exitCode_" }} "_%outputCode_"""""""""")
+	Do ..GenSetField(fieldName,indent,"value","""stream""")
 }
 
 /// Generate code for exporting a literal value as JSON.
@@ -1547,35 +1755,50 @@ ClassMethod GenExportLiteral(class As %String, propertyMap As %List, fieldName A
 	}
 	If 'haveLogicalToJSON Set codeLogicalToJSON="value"
 	Set literaltype=$$$jsonliteraltype(propertyMap)
-	If $piece(literaltype,"/",1)="string" {
-		If literaltype="string" {
-			Set codeLogicalToJSON="$select("_$select($$$jsonignorenull(propertyMap):"(value="""""""")||",1:"")_"(value=$c(0)):"""",1:$zcvt("_codeLogicalToJSON_",""O"",""JSON""))"
-		}
-		Set codeLogicalToJSON="""""""""_"_codeLogicalToJSON_"_"""""""""
-	} ElseIf literaltype="boolean" {
-		Set codeLogicalToJSON="$select(value:""true"",1:""false"")"
+	If (literaltype="runtime") && 'haveLogicalToJSON {
+		$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("With JSONTYPE of runtime, LogicalToJSON() method MUST be defined for data type %1 on property '%2'",type,property)))
 	}
-	Do ..GenWriteField(fieldName,indent,codeLogicalToJSON)
+
+	// Check if literaltype is one of the known JSON types that can be used with %Set.
+	// If so, then use it.
+	// If not, it is invalid for the %Set command. Let type get figured out by IRIS.
+	Set jsontype = ""
+	Set validJsonTypes = "null,boolean,number,string,string<base64,string>base64,stream,stream>base64,stream<base64"
+	If $ListFind($ListFromString(validJsonTypes),literaltype) {
+		Set jsontype = $$$QUOTE(literaltype)
+	}
+	If (literaltype="string") {
+		Set codeLogicalToJSON="$select("_$select($$$jsonignorenull(propertyMap):"(value="""""""")||",1:"")_"(value=$c(0)):"""",1:"_codeLogicalToJSON_")"
+	} ElseIf (literaltype="boolean") {
+		// Force back to value instead of doing XSD/JSON conversion since dynamic object will do it for us
+		Set codeLogicalToJSON = "value"
+	} ElseIf literaltype="runtime" {
+		Set methodName="GetJSONTYPE"
+		Set haveGetJsontype=$$$defMemberDefined(type,$$$cCLASSmethod,methodName)
+		If 'haveGetJsontype {
+			$$$ThrowStatus($$$ERROR($$$GeneralError,$$$FormatText("With JSONTYPE of runtime, %1() method MUST be defined for data type %2 on property '%3'",methodName,type,property)))
+		}
+		Set jsontype = "##class("_type_")."_methodName_"(value)"
+	}
+	Do ..GenSetField(fieldName,indent,codeLogicalToJSON,jsontype)
 }
 
-/// Generate code to write out the field name and value
-ClassMethod GenWriteField(fieldName As %String, indent As %String, valueText As %String)
+/// Generate code to set the fieldName in the JSON to the provided valueText, with the given type
+ClassMethod GenSetField(fieldName As %String, indent As %String, valueText As %String, typeText As %String = "")
 {
-	If fieldName'="" {
-		// If first character of fieldName is $c(1), then the name is actually a variable name that contains field name
-		If $extract(fieldName,1)=$c(1) {
-			Set field="""_"_$replace($zcvt($extract(fieldName,2,*),"O","JSON"),"""","""""")_"_"""
-		} Else {
-			set field=$replace($zcvt(fieldName,"O","JSON"),"""","""""")
+	set type = $Case(typeText, "": "", : ", "_typeText)
+	if (fieldName '= "") {
+		if ($Extract(fieldName) = $Char(1)) {
+			// $c(1) is prepended when its an array and then don't need to quote
+			set field = $Extract(fieldName, 2, *)
+		} else {
+			set field = $$$QUOTE(fieldName)
 		}
-		If valueText'="" {
-			$$$GENERATE(indent_"  "_%outputCode_"sep_"_""""""""_field_""""""_$select($extract(valueText,1)="""":":"_$extract(valueText,2,*),1:":""_"_valueText))
-		} Else {
-			$$$GENERATE(indent_"  "_%outputCode_"sep_"_""""""""_field_""""":""")
-		}
-	} Else {
-		$$$GENERATE(indent_"  "_%outputCode_"sep"_$select(valueText="":"",1:"_")_valueText)
+		$$$GENERATE(indent_"Do "_%exportVar_".%Set("_field_", "_valueText_type_")")
+		return
 	}
+	// This is for collections. Just write out as is
+	$$$GENERATE(indent_"Do arr.%Push("_valueText_type_")")
 }
 
 ClassMethod GetPascalCaseAsCamelCase(pStr As %String) As %String [ Internal ]
@@ -1589,9 +1812,10 @@ ClassMethod GetPascalCaseAsCamelCase(pStr As %String) As %String [ Internal ]
 	Set firstChar = $Extract(pStr,1)
 	Set secondChar = $Extract(pStr,2)
 	Set result = $ZConvert(firstChar,"L") // Always convert at least first char to lower case
-	If (secondChar = $ZConvert(secondChar,"U")) {
+	If (secondChar = $ZConvert(secondChar,"U")) && '$IsValidNum(secondChar) {
 		// If second character is upper-case, keep iterating until a lower case
 		// value is found
+		// If it is a number though, skip since we just need to lower case the first character then
 		For i=2:1:$Length(pStr) {
 			Set c = $Extract(pStr,i)
 			If ($ZConvert(c,"L") = c) {
@@ -1608,4 +1832,3 @@ ClassMethod GetPascalCaseAsCamelCase(pStr As %String) As %String [ Internal ]
 }
 
 }
-

@@ -6,13 +6,13 @@ Note: a minimum platform version of InterSystems IRIS 2018.1 is required.
 
 ### Installation: ZPM
 
-If you already have the [ObjectScript Package Manager](https://openexchange.intersystems.com/package/ObjectScript-Package-Manager-2), installation is as easy as:
+If you already have the [InterSystems Package Manager](https://github.com/intersystems/ipm), installation is as easy as:
 ```
 zpm "install isc.json"
 ```
 
 ## User Guide
-See [isc.json User Guide](https://github.com/intersystems/isc-json/blob/master/docs/user-guide.md).
+See [isc.json User Guide](./docs/user-guide.md).
 
 ## Support
 If you find a bug or would like to request an enhancement, [report an issue](https://github.com/intersystems/isc-json/issues/new). If you have a question, feel free to post it on the [InterSystems Developer Community](https://community.intersystems.com/).

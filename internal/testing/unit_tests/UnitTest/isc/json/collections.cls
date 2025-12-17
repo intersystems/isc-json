@@ -52,6 +52,16 @@ Method TestArrayWithTwoValues()
 	Do $$$AssertEquals(obj.Map.GetAt("RI"),"Providence")
 }
 
+Method TestArrayWithEscapedProperty()
+{
+	Set exportObj = ..GetTestObject()
+	Set importObj = ##class(UnitTest.isc.json.collectionExample).%New()
+	Do exportObj.Map.SetAt("Desert Mouse","Muad""Dib")
+	Do $$$AssertStatusOK(exportObj.%JSONExportToString(.tJSON))
+	Do $$$AssertStatusOK(importObj.%JSONImport(tJSON))
+	Do $$$AssertEquals(importObj.Map.GetAt("Muad""Dib"),"Desert Mouse")
+}
+
 Method GetTestObject() As UnitTest.isc.json.collectionExample
 {
 	Set obj = ##class(UnitTest.isc.json.collectionExample).%New()

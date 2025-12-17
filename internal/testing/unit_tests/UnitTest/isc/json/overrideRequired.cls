@@ -17,7 +17,7 @@ XData InvertedMapping [ XMLNamespace = "http://www.intersystems.com/_pkg/isc/jso
 Method TestCompilingMe()
 {
 	// Gets Generator test coverage credit!
-	Do $$$AssertStatusOK($System.OBJ.Compile($classname(),"ck/nomulticompile"))
+	Do $$$AssertStatusOK($System.OBJ.Compile($classname(),"ck/display=none/nomulticompile"))
 }
 
 /// Make sure custom mapping works bidirectionally

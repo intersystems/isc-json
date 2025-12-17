@@ -42,5 +42,10 @@ Parameter %JSONMAPPING As STRING;
 /// If unspecified, the same behavior is determined based on the [ Required] keyword.
 Parameter %JSONREQUIRED As BOOLEAN;
 
+/// Override default JSONTYPE parameter for literal property. Has no effect on non-literal properties. 
+/// This must be a valid JSONTYPE i.e. one of the possibly return values of 
+/// <class>%DynamicAbstractObject</class> method %GetTypeOf().
+Parameter %JSONTYPE As STRING;
+
 }
 

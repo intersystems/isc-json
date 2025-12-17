@@ -3,11 +3,11 @@ Include (%occInclude, %callout, %pkg.isc.json.map)
 IncludeGenerator %occInclude
 
 /// The following table displays the correspondence between JSON field values and
-/// property values that will be implemented by the JSON Adaptor.<br><br>
+/// property values that will be implemented by the JSON Adaptor.<br /><br />
 /// 
 /// The actual conversion between registered object values and JSON values will be done by new datatype methods: JSONToLogical and LogicalToJSON.
 /// In addition, a new JSONTYPE parameter will be introduced for the datatype classes
-/// which indicates how the daat type will be mapped to JSON.<br><br>
+/// which indicates how the data type will be mapped to JSON.<br /><br />
 /// 
 /// <pre>
 /// JSON                                            Registered object type
@@ -24,7 +24,7 @@ IncludeGenerator %occInclude
 /// boolean                                         %Boolean
 /// 
 /// </pre>
-/// Note that the types %xsd package are all subclasses of base % datatypes and will map as the super type.<br><br>
+/// Note that the types %xsd package are all subclasses of base % datatypes and will map as the super type.<br /><br />
 Class %pkg.isc.json.adaptor [ Abstract, PropertyClass = %pkg.isc.json.propertyParameters, System = 3 ]
 {
 
@@ -46,7 +46,7 @@ Parameter %JSONNULL As BOOLEAN = 0;
 /// This paramneter applies to only true strings which is determined by XSDTYPE = "string" as well as JSONTYPE="string"
 /// By default (%JSONIGNORENULL = 0), empty strings in the JSON input are stored as $c(0)
 /// and $c(0) is written to JSON as the string "". A missing field in the JSON input is always stored as ""
-/// and "" is always output to JSON according to the %JSONNULL parameter.<br>
+/// and "" is always output to JSON according to the %JSONNULL parameter.<br />
 /// If %JSONIGNORENULL is set = 1, then both missing fields in the JSON and empty strings are input as "",
 /// and both "" and $c(0) are output as field values of "". 
 /// The corresponding property parameter overrides this parameter if specified.
@@ -55,11 +55,11 @@ Parameter %JSONIGNORENULL As BOOLEAN = 0;
 /// %JSONREFERENCE specifies the default value of the %JSONREFERENCE property parameter that specifies how to
 /// project references to JSON.  %JSONREFERENCE may be specified for any property to override this default value.
 /// Possible values of %JSONREFERENCE are "OBJECT", "ID", "OID", "GUID".
-/// ="OBJECT" is the default and indicates that the properties of the referenced class are used to represent the referenced object.<br>
-/// ="ID" indicates that the id of a persistent or serial class is used to represent the reference.<br>
+/// ="OBJECT" is the default and indicates that the properties of the referenced class are used to represent the referenced object.<br />
+/// ="ID" indicates that the id of a persistent or serial class is used to represent the reference.<br />
 /// ="OID" indicates that the oid of a persistent or serial class is used to represent the reference.
-///  The form of the oid as projected to JSON will be classname,id.<br>
-/// ="GUID" indicates the GUID of a persistent class is used to represent the reference.<br>
+///  The form of the oid as projected to JSON will be classname,id.<br />
+/// ="GUID" indicates the GUID of a persistent class is used to represent the reference.<br />
 /// The corresponding property parameter overrides this parameter if specified.
 Parameter %JSONREFERENCE As STRING [ Constraint = "OBJECT,ID,OID,GUID", Flags = ENUM ] = "OBJECT";
 
@@ -79,9 +79,10 @@ Parameter %JSONMAPPING As STRING;
 /// as camelCase.
 Parameter %JSONFIELDNAMEASCAMELCASE As BOOLEAN = 0;
 
-/// %JSONImport imports JSON or dynamic object input into this object.<br>
-/// The input argument is either JSON as a string or stream, or a subclass of %DynamicAbstractObject.<br>
-/// mappingName is the name of the mapping to use for the import.  The base mapping is represened by "" and is the default.
+/// %JSONImport imports JSON or dynamic object input into this object.<br />
+/// The input argument is either JSON as a string or stream, or a subclass of %DynamicAbstractObject.<br />
+/// mappingName is the name of the mapping to use for the import.  The base mapping is represented by "" and is the default.
+/// If a mapping name is provided that does not exist, an error is thrown. <br />
 Method %JSONImport(input, %mappingName As %String = "") As %Status [ ServerOnly = 1 ]
 {
 	Try {
@@ -105,98 +106,136 @@ Method %JSONImport(input, %mappingName As %String = "") As %Status [ ServerOnly 
 	Quit sc
 }
 
-/// Get an instance of an JSON enabled class.<br><br>
+/// Import an array of JSON records into a list of objects for this class. <var>list</var> can be provided.
+/// If not provided, one is created. Imported elements are added to the end of the list. <br />
+/// <var>mappingName</var> is the name of the mapping to use for the import. The base mapping is 
+/// represented by "" and is the default. <br />
+/// If a mapping name is provided that does not exist, an error is thrown. <br />
+/// <var>behavior</var> has the following structure: <br />
+/// <pre>
+/// {
+/// 	// Only valid for persistant records. Ignored if class is not persistent.
+/// 	// Default: false.
+/// 	"save": boolean;
+/// 	// Whether to accumulate errors instead of quitting on the first error encountered.
+/// 	// Default: true.
+/// 	"accumulateErrors": boolean;
+/// }
+/// </pre>
+/// <var>errorLog</var> contains errors that occurred indexed by the array index on which the error
+/// occurred. When accumulateErrors is false, this would have at most one entry. <br />
+/// <code>
+/// errorLog(3) = "error status from importing index element 4 (5th element) in the JSON array" <br />
+/// errorLog(7) = "error status from importing index element 7 (8th element) in the JSON array" <br />
+/// </code>
+ClassMethod %JSONImportArray(array As %DynamicArray, mappingName As %String = "", behavior As %DynamicObject = "", ByRef list As %ListOfObjects, Output errorLog) As %Status
+{
+	Set sc = $$$OK
+	Set totalSc = $$$OK
+	Kill errorLog
+	Try {
+		If '$IsObject($Get(behavior)) {
+			Set behavior = {}
+		}
+		Set save = behavior.%Get("save", 0)
+		Set accumulate = behavior.%Get("accumulateErrors", 1)
+		If '(($Data(list)#2) && $IsObject(list) && list.%Extends("%ListOfObjects")) {
+			Set list = ##class(%ListOfObjects).%New()
+			Set list.ElementType = $ClassName()
+		}
+		Set isPersistent = $ClassMethod($ClassName(), "%Extends", "%Persistent")
+		Set iter = array.%GetIterator()
+		While iter.%GetNext(.index, .value) {
+			Set iterSc = $$$OK
+			#dim obj As %pkg.isc.json.adaptor
+			Set obj = ..%JSONNew(value, , mappingName)
+			Set importSc = obj.%JSONImport(value, mappingName)
+			Set iterSc = $$$ADDSC(iterSc,importSc)
+			If save && isPersistent && $$$ISOK(importSc) {
+				Set iterSc = $$$ADDSC(iterSc,obj.%Save())
+			}
+			Set iterSc = $$$ADDSC(iterSc,list.Insert(obj))
+			// Error handling
+			If $$$ISERR(iterSc) {
+				Set errorLog(index) = iterSc
+			}
+			If (accumulate) {
+				Set totalSc = $$$ADDSC(totalSc,iterSc)
+			} Else {
+				$$$ThrowOnError(iterSc)
+			}
+		}
+		$$$ThrowOnError(totalSc)
+	} Catch (ex) {
+		Set sc = ex.AsStatus()
+	}
+	Return sc
+}
+
+/// Get an instance of an JSON enabled class.<br /><br />
 /// 
 /// You may override this method to do custom processing (such as initializing
 /// the object instance) before returning an instance of this class.
-/// However, this method should not be called directly from user code.<br>
-/// Arguments:<br>
-///     dynamicObject is the dynamic object with thee values to be assigned to the new object.<br>
-///     containerOref is the containing object instance when called from JSONImport.
-ClassMethod %JSONNew(dynamicObject As %DynamicObject, containerOref As %RegisteredObject = "") As %RegisteredObject [ CodeMode = generator, GenerateAfter = %JSONGenerate, ServerOnly = 1 ]
+/// However, this method should not be called directly from user code.<br />
+/// Arguments:<br />
+///     dynamicObject is the dynamic object with thee values to be assigned to the new object.<br />
+///     containerOref is the containing object instance when called from JSONImport. <br />
+/// 	mappingName is the name of the mapping to use for the export. The base mapping is represented by "" and is the default.
+/// 	If a mapping name is provided that does not exist, an error is thrown. <br />
+ClassMethod %JSONNew(dynamicObject As %DynamicObject, containerOref As %RegisteredObject = "", %mappingName As %String = "") As %RegisteredObject
 {
-	Quit ##class(%pkg.isc.json.generator).JSONNew(.%mode,.%class,.%property,.%method,.%parameter,.%codemode,.%code,.%classmodify,.%context)
+	Return ..%JSONNewDefault(dynamicObject, containerOref, %mappingName)
 }
 
-/// Serialize a JSON enabled class as a JSON document and write it to the current device.<br>
-/// mappingName is the name of the mapping to use for the export.  The base mapping is represened by "" and is the default.
+/// Serialize a JSON enabled class as a JSON document and write it to the current device.<br />
+/// mappingName is the name of the mapping to use for the export. The base mapping is represented by "" and is the default.
+/// If a mapping name is provided that does not exist, an error is thrown. <br />
 Method %JSONExport(%mappingName As %String = "") As %Status
 {
+	Set sc=$$$OK
 	Try {
-		Set sc=$$$OK
-		
 		// Do the export to current device now.
-		Set sc=..%JSONExportInternal()
-
+		$$$ThrowOnError(..%JSONExportToDynamicObject(.json, %mappingName))
+		Do json.%ToJSON()
 	} Catch ex {
 		Set sc=ex.AsStatus()
 	}
-
-	Quit sc
+	Return sc
 }
 
-/// Serialize a JSON enabled class as a JSON document and write it to a stream.<br>
-/// mappingName is the name of the mapping to use for the export.  The base mapping is represened by "" and is the default.
+/// Serialize a JSON enabled class as a JSON document and write it to a stream.<br />
+/// mappingName is the name of the mapping to use for the export.  The base mapping is represetned by "" and is the default.
+/// If a mapping name is provided that does not exist, an error is thrown. <br />
 Method %JSONExportToStream(ByRef export As %Stream.Object, %mappingName As %String = "") As %Status
 {
-	// Save current device
-	Set io=$io
-	
+	Set sc = $$$OK
 	Try {
 		// Always output to %FileCharacterStream
 		If $get(export)="" {
-			Set export=##class(%FileCharacterStream).%New()
+			Set export=##class(%Stream.FileCharacter).%New()
 			// JSON is always UTF-8
 			Set export.TranslateTable="UTF8"
 			Set filestream=1
-		} Else {
-			Set filestream = ($zobjclass(export)="%Library.FileCharacterStream")
 		}
-		If filestream {
-			Set stream=export
-		} Else {
-			Set stream=##class(%FileCharacterStream).%New()
-			Set stream.TranslateTable="UTF8"
-		}
-		
-		// Force stream's file to open
-		Set sc=stream.Write("")
-		
-		// Export JSON to the stream
-		If $$$ISOK(sc) {
-			Set file=stream.Filename ; get filename and make current device
-			Use file:(/NOXY)
-			Set sc=..%JSONExportInternal()
-			// Don't Close file to leave stream positioned
-			Use io
-		}
-		
-		// Need to ensdure that LineTerminator is correct for the platform
-		If $$$ISOK(sc) Set stream.LineTerminator=$select($$$isUNIX:$char(10),1:$char(13,10))
-
-		// If we created the stream and caller passed in stream, then copy it to the caller's stream
-		If 'filestream,$$$ISOK(sc) {	
-			Set sc=export.CopyFrom(stream)
-		}
-
+		$$$ThrowOnError(..%JSONExportToDynamicObject(.json, %mappingName))
+		Do json.%ToJSON(.export)
 	} Catch ex {
 		Set sc=ex.AsStatus()
 	}
-
-	Quit sc
+	Return sc
 }
 
-/// Serialize a JSON enabled class as a JSON document and return it as a string.<br>
-/// mappingName is the name of the mapping to use for the export.  The base mapping is represened by "" and is the default.
-Method %JSONExportToString(ByRef %export As %String, %mappingName As %String = "") As %Status
+/// Serialize a JSON enabled class as a JSON document and return it as a string.<br />
+/// mappingName is the name of the mapping to use for the export.  The base mapping is represented by "" and is the default.
+/// If a mapping name is provided that does not exist, an error is thrown. <br />
+Method %JSONExportToString(ByRef export As %String, %mappingName As %String = "") As %Status
 {
+	Set sc=$$$OK
 	Try {
-		Set sc=$$$OK
-		
 		// Do the export to current device now.
-		Set %export=""
-		Set sc=..%JSONExportToStringInternal()
-
+		Set export=""
+		$$$ThrowOnError(..%JSONExportToDynamicObject(.json, %mappingName))
+		Set export = json.%ToJSON()
 	} Catch ex {
 		If ex.Name="<MAXSTRING>" {
 			Set sc=$$$ERROR($$$JSONMaxString,$$$mappingNameDisplay(%mappingName))
@@ -204,8 +243,230 @@ Method %JSONExportToString(ByRef %export As %String, %mappingName As %String = "
 			Set sc=ex.AsStatus()
 		}
 	}
+	Return sc
+}
 
-	Quit sc
+/// Serialize a JSON enabled class as a JSON document and return it as JSON.<br />
+/// mappingName is the name of the mapping to use for the export.  The base mapping is reprtesened by "" and is the default.
+/// If a mapping name is provided that does not exist, an error is thrown. <br />
+Method %JSONExportToDynamicObject(Output %export As %DynamicObject, %mappingName As %String = "") As %Status
+{
+	Set sc = $$$OK
+	Try {
+		Set %export = {}
+		Do ..%JSONExportInternal()
+	} Catch (ex) {
+		Set sc = ex.AsStatus()
+	}
+	Return sc
+}
+
+/// Export the provided list to a JSON array. <var>array</var> can be provided. Entries are appended
+/// to the end of the array. <br />
+/// The list can be one of the following: <br />
+/// If the class is NOT persistent: <br />
+/// <ul>
+/// 	<li>%ListOfObjects: List of objects of the current class to export.</li>
+/// </ul>
+/// If the class is persistent: <br />
+/// <ul>
+/// 	<li>%ListOfObjects: List of objects of the current class to export.</li>
+/// 	<li>%List: List of IDs</li>
+/// 	<li>%ListOfDataTypes: List of IDs</li>
+/// 	<li>%DynamicArray: Array of IDs</li>
+/// 	<li>%SQL.StatementResult: ResultSet where the ID column is used to identify records to export.</li>
+/// </ul>
+/// mappingName is the name of the mapping to get metadata for. 
+/// The base mapping is represented by "" and is the default.
+/// If a mapping name is provided that does not exist, an error is thrown. <br />
+/// <var>behavior</var> has the following structure: <br />
+/// <pre>
+/// {
+/// 	// Whether to accumulate errors instead of quitting on the first error encountered.
+/// 	// Default: true.
+/// 	"accumulateErrors": boolean;
+/// }
+/// </pre>
+/// <var>errorLog</var> contains errors that occurred indexed by the list index on which the error
+/// occurred. When accumulateErrors is false, this would have at most one entry. <br />
+/// <code>
+/// errorLog(3) = "error status from importing index element 4 (5th element) in the JSON array" <br />
+/// errorLog(7) = "error status from importing index element 7 (8th element) in the JSON array" <br />
+/// </code>
+ClassMethod %JSONExportArray(list As %RawString, mappingName As %String = "", behavior As %DynamicObject = "", ByRef array As %DynamicArray, Output errorLog) As %Status
+{
+	#dim objList as %ListOfObjects
+	#dim idList as %ListOfDataTypes
+	#dim obj as %pkg.isc.json.adaptor
+	#dim arrList as %DynamicArray
+	#dim rs as %SQL.StatementResult
+	Set invalidInputError = $$$ERROR($$$JSONInvalidListForExportArray,$ClassName())
+	Set sc = $$$OK
+	Set totalSc = $$$OK
+	Kill errorLog
+	Try {
+		Set isPersistent = $ClassMethod($ClassName(),"%Extends","%Persistent")
+		If '$IsObject($Get(array)) {
+			Set array = []
+		}
+		If '$IsObject($Get(behavior)) {
+			Set behavior = {}
+		}
+		Set accumulate = behavior.%Get("accumulateErrors", 1)
+		If $IsObject(list) {
+			If isPersistent && list.%Extends("%DynamicArray") {
+				Set arrList = list
+				Set iter = arrList.%GetIterator()
+				While iter.%GetNext(.index, .id) {
+					Set iterSc = $$$OK
+					Set obj = $ClassMethod($ClassName(), "%OpenId", id, 0, .sc)
+					Set iterSc = $$$ADDSC(iterSc,sc)
+					If $IsObject(obj) {
+						Set iterSc = $$$ADDSC(iterSc,obj.%JSONExportToDynamicObject(.json,mappingName))
+						If $$$ISOK(iterSc) {
+							Do array.%Push(json)
+						}
+					}
+					// Clear up memory
+					Kill obj
+					// Error handling
+					If $$$ISERR(iterSc) {
+						Set errorLog(index) = iterSc
+					}
+					If (accumulate) {
+						Set totalSc = $$$ADDSC(totalSc,iterSc)
+					} Else {
+						$$$ThrowOnError(iterSc)
+					}
+				}
+			} ElseIf list.%Extends("%ListOfObjects") {
+				// Only one that supports non-persistent
+				Set objList = list
+				For i = 1:1:objList.Count() {
+					Set iterSc = $$$OK
+					Set obj = objList.GetAt(i)
+					Set iterSc = $$$ADDSC(iterSc,obj.%JSONExportToDynamicObject(.json,mappingName))
+					If $$$ISOK(iterSc) {
+						Do array.%Push(json)
+					}
+					// Clear up memory
+					Kill obj
+					// Error handling
+					If $$$ISERR(iterSc) {
+						Set errorLog(i-1) = iterSc
+					}
+					If (accumulate) {
+						Set totalSc = $$$ADDSC(totalSc,iterSc)
+					} Else {
+						$$$ThrowOnError(iterSc)
+					}
+				}
+			} ElseIf isPersistent && list.%Extends("%ListOfDataTypes") {
+				Set idList = list
+				For i = 1:1:idList.Count() {
+					Set iterSc = $$$OK
+					Set id = idList.GetAt(i)
+					Set obj = $ClassMethod($ClassName(), "%OpenId", id, 0, .sc)
+					Set iterSc = $$$ADDSC(iterSc,sc)
+					If $IsObject(obj) {
+						Set iterSc = $$$ADDSC(iterSc,obj.%JSONExportToDynamicObject(.json,mappingName))
+						If $$$ISOK(iterSc) {
+							Do array.%Push(json)
+						}
+					}
+					// Clear up memory
+					Kill obj
+					// Error handling
+					If $$$ISERR(iterSc) {
+						Set errorLog(i-1) = iterSc
+					}
+					If (accumulate) {
+						Set totalSc = $$$ADDSC(totalSc,iterSc)
+					} Else {
+						$$$ThrowOnError(iterSc)
+					}
+				}
+			} ElseIf isPersistent && list.%Extends("%SQL.StatementResult") {
+				Set rs = list
+				Set index = 0
+				While rs.%Next(.sc) {
+					Set iterSc = $$$OK
+					Set id = rs.%Get("ID")
+					If (id = "") {
+						Continue
+					}
+					Set obj = $ClassMethod($ClassName(), "%OpenId", id, 0, .sc)
+					Set iterSc = $$$ADDSC(iterSc,sc)
+					If $IsObject(obj) {
+						Set iterSc = $$$ADDSC(iterSc,obj.%JSONExportToDynamicObject(.json,mappingName))
+						If $$$ISOK(iterSc) {
+							Do array.%Push(json)
+						}
+					}
+					// Clear up memory
+					Kill obj
+					// Error handling
+					If $$$ISERR(iterSc) {
+						Set errorLog(index) = iterSc
+					}
+					If (accumulate) {
+						Set totalSc = $$$ADDSC(totalSc,iterSc)
+					} Else {
+						$$$ThrowOnError(iterSc)
+					}
+					Do $Increment(index)
+				}
+			} Else {
+				$$$ThrowStatus(invalidInputError)
+			}
+		} ElseIf isPersistent && $ListValid(list) {
+			Set ptr = 0
+			Set index = 0
+			While $ListNext(list,ptr,id) {
+				Set iterSc = $$$OK
+				Set obj = $ClassMethod($ClassName(), "%OpenId", id, 0, .sc)
+				Set iterSc = $$$ADDSC(iterSc,sc)
+				If $IsObject(obj) {
+					Set iterSc = $$$ADDSC(iterSc,obj.%JSONExportToDynamicObject(.json,mappingName))
+					If $$$ISOK(iterSc) {
+						Do array.%Push(json)
+					}
+				}
+				// Clear up memory
+				Kill obj
+				// Error handling
+				If $$$ISERR(iterSc) {
+					Set errorLog(index) = iterSc
+				}
+				If (accumulate) {
+					Set totalSc = $$$ADDSC(totalSc,iterSc)
+				} Else {
+					$$$ThrowOnError(iterSc)
+				}
+				Do $Increment(index)
+			}
+		} Else {
+			$$$ThrowStatus(invalidInputError)
+		}
+		// Throw on error at the end
+		$$$ThrowOnError(totalSc)
+	} Catch (ex) {
+		Set sc = ex.AsStatus()
+	}
+	Return sc
+}
+
+/// Returns metadata about a provided JSON mapping for the current JSON serializable class. <br />
+/// mappingName is the name of the mapping to get metadata for. The base mapping is represented by "" and is the default.
+ClassMethod %JSONMappingInfo(Output mappingInfo As %pkg.isc.json.mappingInfo, %mappingName As %String = "") As %Status
+{
+	Set sc = $$$OK
+	Try {
+		Set mappingInfo = ..%JSONMappingInfoInternal()
+	} Catch (ex) {
+		Set sc = ex.AsStatus()
+	}
+	Return sc
 }
 
 /// Dummy method which exists to force GenerateAfter code to take affect for %JSONGenerate.
@@ -235,16 +496,23 @@ Method %JSONImportInternal() As %Status [ CodeMode = generator, GenerateAfter = 
 }
 
 /// %JSONExportInternal is internal method used by %JSONExport
-Method %JSONExportInternal() As %Status [ CodeMode = generator, GenerateAfter = %JSONGenerate, Internal, ServerOnly = 1 ]
+Method %JSONExportInternal() [ CodeMode = generator, GenerateAfter = %JSONGenerate, Internal, ServerOnly = 1 ]
 {
 	Quit ##class(%pkg.isc.json.generator).JSONExportInternal(.%mode,.%class,.%property,.%method,.%parameter,.%codemode,.%code,.%classmodify,.%context)
 }
 
-/// %JSONExportToStringInternal is internal method used by %JSONExport
-Method %JSONExportToStringInternal() As %Status [ CodeMode = generator, GenerateAfter = %JSONGenerate, Internal, ServerOnly = 1 ]
+/// Internal method used by %JSONMappingInfo
+ClassMethod %JSONMappingInfoInternal() As %pkg.isc.json.mappingInfo [ CodeMode = generator, GenerateAfter = %JSONGenerate, Internal, ServerOnly = 1 ]
 {
-	Quit ##class(%pkg.isc.json.generator).JSONExportToStringInternal(.%mode,.%class,.%property,.%method,.%parameter,.%codemode,.%code,.%classmodify,.%context)
+	Quit ##class(%pkg.isc.json.generator).JSONMappingInfo(.%mode,.%class,.%property,.%method,.%parameter,.%codemode,.%code,.%classmodify,.%context)
+}
+
+/// Generates default handling for JSONNew implementation. If overriding <method>%JSONNew</method>,
+/// this can be called to retain the generated default handling (similar to calling super for non-generated
+/// but inherited methods)
+ClassMethod %JSONNewDefault(dynamicObject As %DynamicObject, containerOref As %RegisteredObject = "", %mappingName As %String = "") As %RegisteredObject [ CodeMode = generator, GenerateAfter = %JSONGenerate ]
+{
+	Quit ##class(%pkg.isc.json.generator).JSONNewDefault(.%mode,.%class,.%property,.%method,.%parameter,.%codemode,.%code,.%classmodify,.%context)
 }
 
 }
-
