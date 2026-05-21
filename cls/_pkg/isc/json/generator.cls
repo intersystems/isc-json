@@ -1067,8 +1067,12 @@ ClassMethod GenerateAllImportInternal(class As %String, ByRef mapping As %String
 			$$$GENERATE("  If $get(testInvalidField) {")
 			$$$GENERATE("    Set invalid=0,iterator=%JSONObject.%GetIterator()")
 			// The iterator can raise <MAXSTRING> on stream-backed fields whose content was already
-			// successfully decoded during import. Swallow only that error so a completed import
-			// is not falsely failed by this post-import key check.
+			// successfully decoded during import. This is an accepted limitation of the IRIS
+			// %DynamicObject iterator: %GetNext raises <MAXSTRING> even when called without a value
+			// argument if the object contains a large stream-backed field. When this happens,
+			// fields that appear after the large-stream field in the JSON object will not be
+			// checked for validity — unknown fields after it are silently accepted. Swallow only
+			// <MAXSTRING> so a completed import is not falsely failed by this post-import key check.
 			$$$GENERATE("    Try { While iterator.%GetNext(.key) { If $data(proplist(key))=0 Set invalid=1 Quit  } }")
 			$$$GENERATE("    Catch iterEx { If iterEx.Name'=""<MAXSTRING>"" Throw iterEx }")
 			$$$GENERATE("    If invalid Quit $$$ERROR($$$JSONImportBadField,key,$$$mappingNameDisplay(%mappingName))")
@@ -1166,7 +1170,9 @@ ClassMethod GenImportList(class As %String, propertyMap As %List, indent As %Str
 	$$$GENERATE(indent_"    If jsontype=""null"" {")
 	$$$GENERATE(indent_"      Do .."_$$$jsonpropertyQN(propertyMap)_".Insert("""")")
 	$$$GENERATE(indent_"    } Else {")
-	$$$GENERATE(indent_"      Set value=data.%Get(index)")
+	// Wrap the value pre-fetch in Try/Catch: for large binary stream elements %Get raises
+	// <MAXSTRING>, but GenImportBinaryStream reads via %Get(index,,"stream") and never uses value.
+	$$$GENERATE(indent_"      Try { Set value=data.%Get(index) } Catch exVal { If exVal.Name'=""<MAXSTRING>"" Throw exVal }")
 	// Generate code to import list element
 	Do ..GenImportField(class,propertyMap,indent_"    ",$$$isCollectionList)
 	$$$GENERATE(indent_"  }}")
@@ -1180,7 +1186,10 @@ ClassMethod GenImportArray(class As %String, propertyMap As %List, indent As %St
 	$$$GENERATE(indent_"  Set data=%JSONObject."_$$$QN($$$jsonfieldname(propertyMap)))
 	$$$GENERATE(indent_"  Do .."_$$$jsonpropertyQN(propertyMap)_".Clear()")
 	$$$GENERATE(indent_"  Set iterator=data.%GetIterator()")
-	$$$GENERATE(indent_"  While iterator.%GetNext(.index,.value) {")
+	$$$GENERATE(indent_"  While iterator.%GetNext(.index) {")
+	// Wrap the value pre-fetch in Try/Catch: for large binary stream elements %Get raises
+	// <MAXSTRING>, but GenImportBinaryStream reads via data.%Get(index,,"stream") and never uses value.
+	$$$GENERATE(indent_"    Try { Set value=data.%Get(index) } Catch exVal { If exVal.Name'=""<MAXSTRING>"" Throw exVal }")
 	$$$GENERATE(indent_"    Set jsontype=data.%GetTypeOf(index)")
 	$$$GENERATE(indent_"    If jsontype=""null"" {")
 	$$$GENERATE(indent_"      Do .."_$$$jsonpropertyQN(propertyMap)_".SetAt("""",index)")
@@ -1212,7 +1221,7 @@ ClassMethod GenImportField(class As %String, propertyMap As %List, indent As %St
 
 	} ElseIf membercat["STREAM" {
 		// Input stream
-		If membercat="BSTREAM" {
+		If membercat["BSTREAM" {
 			// Generate code to import binary stream
 			Do ..GenImportBinaryStream(class,propertyMap,indent,isCollectionValue)
 		} Else {
@@ -1349,10 +1358,11 @@ ClassMethod GenImportBinaryStream(class As %String, propertyMap As %List, indent
 		Set indexarg=$select(isCollectionValue=$$$isCollectionList:"index+1",1:"index")
 		$$$GENERATE(indent_"  Set stream=..##class("_$$$jsontype(propertyMap)_").%New()")
 		If $$$jsonliteraltype(propertyMap)["hex" {
+			$$$GENERATE(indent_"  Set value=data.%Get(index),bin=""""")
 			$$$GENERATE(indent_"  For i=1:2:$length(value) {")
 			$$$GENERATE(indent_"    Set bin=bin_$char($zhex($extract(value,i,i+1)))")
 			$$$GENERATE(indent_"  }")
-			$$$GENERATE(indent_"  Set sc=stream.Write(value) If $$$ISERR(sc) Goto %JSONImportExit")
+			$$$GENERATE(indent_"  Set sc=stream.Write(bin) If $$$ISERR(sc) Goto %JSONImportExit")
 		} Else {
 			// Read the JSON string as a stream to avoid <MAXSTRING> on large base64 payloads.
 			// Strip CRLF/LF line breaks (inserted by some encoders) and buffer until we have a
