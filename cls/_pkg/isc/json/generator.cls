@@ -1066,7 +1066,11 @@ ClassMethod GenerateAllImportInternal(class As %String, ByRef mapping As %String
 		If needTestInvalidField {
 			$$$GENERATE("  If $get(testInvalidField) {")
 			$$$GENERATE("    Set invalid=0,iterator=%JSONObject.%GetIterator()")
-			$$$GENERATE("    While iterator.%GetNext(.key,.value) { If $data(proplist(key))=0 Set invalid=1 Quit  }")
+			// The iterator can raise <MAXSTRING> on stream-backed fields whose content was already
+			// successfully decoded during import. Swallow only that error so a completed import
+			// is not falsely failed by this post-import key check.
+			$$$GENERATE("    Try { While iterator.%GetNext(.key) { If $data(proplist(key))=0 Set invalid=1 Quit  } }")
+			$$$GENERATE("    Catch iterEx { If iterEx.Name'=""<MAXSTRING>"" Throw iterEx }")
 			$$$GENERATE("    If invalid Quit $$$ERROR($$$JSONImportBadField,key,$$$mappingNameDisplay(%mappingName))")
 			$$$GENERATE("  }")
 		}
@@ -1350,7 +1354,19 @@ ClassMethod GenImportBinaryStream(class As %String, propertyMap As %List, indent
 			$$$GENERATE(indent_"  }")
 			$$$GENERATE(indent_"  Set sc=stream.Write(value) If $$$ISERR(sc) Goto %JSONImportExit")
 		} Else {
-			$$$GENERATE(indent_"  Set sc=stream.Write($system.Encryption.Base64Decode(value)) If $$$ISERR(sc) Goto %JSONImportExit")
+			// Read the JSON string as a stream to avoid <MAXSTRING> on large base64 payloads.
+			// Strip CRLF/LF line breaks (inserted by some encoders) and buffer until we have a
+			// multiple of 4 chars so Base64Decode always receives complete groups.
+			$$$GENERATE(indent_"  Set b64stream=data.%Get(index,,""stream""),b64buf=""""")
+			$$$GENERATE(indent_"  While 'b64stream.AtEnd {")
+			$$$GENERATE(indent_"    Set b64buf=b64buf_$replace($replace(b64stream.Read(57600),$char(13,10),""""),$char(10),"""")")
+			$$$GENERATE(indent_"    Set b64len=$length(b64buf)\4*4")
+			$$$GENERATE(indent_"    If b64len=0 Continue")
+			$$$GENERATE(indent_"    Set sc=stream.Write($system.Encryption.Base64Decode($extract(b64buf,1,b64len)))")
+			$$$GENERATE(indent_"    If $$$ISERR(sc) Goto %JSONImportExit")
+			$$$GENERATE(indent_"    Set b64buf=$extract(b64buf,b64len+1,*)")
+			$$$GENERATE(indent_"  }")
+			$$$GENERATE(indent_"  If b64buf'="""" { Set sc=stream.Write($system.Encryption.Base64Decode(b64buf)) If $$$ISERR(sc) Goto %JSONImportExit }")
 		}
 		If isCollectionValue=$$$isCollectionList {
 			// Generate code to save value in list
@@ -1369,7 +1385,18 @@ ClassMethod GenImportBinaryStream(class As %String, propertyMap As %List, indent
 			$$$GENERATE(indent_"  }")
 			$$$GENERATE(indent_"  Set sc=stream.Write(bin) If $$$ISERR(sc) Goto %JSONImportExit")
 		} Else {
-			$$$GENERATE(indent_"  Set sc=stream.Write($system.Encryption.Base64Decode(%JSONObject."_$$$QN($$$jsonfieldname(propertyMap))_")) If $$$ISERR(sc) Goto %JSONImportExit")
+			// Same chunked approach as the collection path above: read the JSON string field as a
+			// stream, strip newlines, buffer to a 4-char boundary, decode in chunks, flush remainder.
+			$$$GENERATE(indent_"  Set b64stream=%JSONObject.%Get("""_$$$jsonfieldname(propertyMap)_""",,""stream""),b64buf=""""")
+			$$$GENERATE(indent_"  While 'b64stream.AtEnd {")
+			$$$GENERATE(indent_"    Set b64buf=b64buf_$replace($replace(b64stream.Read(57600),$char(13,10),""""),$char(10),"""")")
+			$$$GENERATE(indent_"    Set b64len=$length(b64buf)\4*4")
+			$$$GENERATE(indent_"    If b64len=0 Continue")
+			$$$GENERATE(indent_"    Set sc=stream.Write($system.Encryption.Base64Decode($extract(b64buf,1,b64len)))")
+			$$$GENERATE(indent_"    If $$$ISERR(sc) Goto %JSONImportExit")
+			$$$GENERATE(indent_"    Set b64buf=$extract(b64buf,b64len+1,*)")
+			$$$GENERATE(indent_"  }")
+			$$$GENERATE(indent_"  If b64buf'="""" { Set sc=stream.Write($system.Encryption.Base64Decode(b64buf)) If $$$ISERR(sc) Goto %JSONImportExit }")
 		}
 	}
 }
