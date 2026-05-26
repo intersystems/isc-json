@@ -1,5 +1,4 @@
 /// Regression tests for MAXSTRING on large binary stream import.
-/// zpm "isc.json test -only -DUnitTest.Case=UnitTest.isc.json.importLargeStream"
 Class UnitTest.isc.json.importLargeStream Extends %UnitTest.TestCase
 {
 
@@ -62,7 +61,7 @@ Method TestImportLargeBinaryStream()
     Do inst.BinaryStream.Rewind()
     Set chunkMismatch = 0
     While 'rawStream.AtEnd {
-        Set rawChunk     = rawStream.Read(57600)
+        Set rawChunk = rawStream.Read(57600)
         Set decodedChunk = inst.BinaryStream.Read(57600)
         If rawChunk '= decodedChunk Set chunkMismatch = 1  Quit
     }
@@ -116,7 +115,7 @@ Method TestImportLargeBinaryStreamNonMultipleOf3()
     Do inst.BinaryStream.Rewind()
     Set chunkMismatch = 0
     While 'rawStream.AtEnd {
-        Set rawChunk     = rawStream.Read(57600)
+        Set rawChunk = rawStream.Read(57600)
         Set decodedChunk = inst.BinaryStream.Read(57600)
         If rawChunk '= decodedChunk Set chunkMismatch = 1  Quit
     }
